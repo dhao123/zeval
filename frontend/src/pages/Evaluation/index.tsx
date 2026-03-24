@@ -1,5 +1,5 @@
-import { Card, Table, Button, Input, Select, Space, Tag, Upload, Steps, Form, Modal } from 'antd'
-import { UploadOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Input, Select, Space, Tag, Steps, Form, Modal } from 'antd'
+import { PlusOutlined, EyeOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 
 const { Step } = Steps

@@ -1,5 +1,5 @@
 import { Card, Table, Button, Input, Space, Tag, Upload } from 'antd'
-import { UploadOutlined, FileTextOutlined } from '@ant-design/icons'
+import { UploadOutlined } from '@ant-design/icons'
 
 const columns = [
   {

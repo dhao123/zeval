@@ -30,7 +30,6 @@ router = APIRouter()
 async def list_draft_pool(
     category_l4: Optional[str] = Query(None, description="按四级类目筛选"),
     status: Optional[str] = Query(None, pattern="^(draft|confirmed|rejected)$", description="按状态筛选"),
-    difficulty: Optional[str] = Query(None, pattern="^(low|medium|high|ultra)$", description="按难度筛选"),
     seed_id: Optional[str] = Query(None, description="按种子ID筛选"),
     keyword: Optional[str] = Query(None, description="关键词搜索"),
     pagination: PaginationParams = Depends(),
@@ -46,7 +45,6 @@ async def list_draft_pool(
     filter_params = SyntheticFilter(
         category_l4=category_l4,
         status=status,
-        difficulty=difficulty,
         seed_id=seed_id,
         keyword=keyword,
     )
@@ -510,3 +508,54 @@ async def test_delete_synthetic(
     logger.info(f"[TEST] Synthetic deleted: {synthetic_id}")
     
     return ResponseModel(code=0, message="success", data={"deleted": True})
+
+
+@router.post("/test/batch-confirm", response_model=ResponseModel[List[SyntheticConfirmResponse]])
+async def test_batch_confirm_synthetics(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """【测试用】批量确认或拒绝合成数据（无需认证）。
+    
+    确认后会自动执行5:5分流。
+    """
+    service = SyntheticService(db)
+    router_service = RouterService(db)
+    
+    synthetic_ids = request.get("synthetic_ids", [])
+    action = request.get("action", "confirm")
+    reason = request.get("reason")
+    
+    results = []
+    confirmed_ids = []
+    
+    # 先处理所有确认/拒绝操作
+    for synthetic_id in synthetic_ids:
+        result = await service.confirm(
+            synthetic_id=synthetic_id,
+            action=action,
+            confirmed_by=1,  # 测试用户ID
+            reason=reason,
+        )
+        results.append(result)
+        
+        if result.success and action == "confirm":
+            confirmed_ids.append(synthetic_id)
+    
+    # 批量执行分流（如果是确认操作）
+    if confirmed_ids and action == "confirm":
+        route_result = await router_service.execute_5_5_routing(
+            synthetic_ids=confirmed_ids
+        )
+        
+        # 将分流结果添加到每个响应中
+        for result in results:
+            if result.success:
+                result.route_result = route_result
+        
+        logger.info(
+            f"[TEST] Batch confirmed and routed: {len(confirmed_ids)} synthetics, "
+            f"batch_id={route_result.get('batch_id')}"
+        )
+    
+    return ResponseModel(code=0, message="success", data=results)

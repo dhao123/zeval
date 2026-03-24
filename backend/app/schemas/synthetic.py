@@ -120,7 +120,6 @@ class SyntheticFilter(BaseModel):
     """合成数据筛选条件."""
     category_l4: Optional[str] = Field(default=None, description="四级类目")
     status: Optional[str] = Field(default=None, pattern="^(draft|confirmed|rejected)$", description="状态")
-    difficulty: Optional[str] = Field(default=None, pattern="^(low|medium|high|ultra)$", description="难度")
     seed_id: Optional[str] = Field(default=None, description="关联种子ID")
     keyword: Optional[str] = Field(default=None, description="关键词搜索")
 

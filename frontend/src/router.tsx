@@ -7,6 +7,8 @@ import Standards from './pages/Standards'
 import Skills from './pages/Skills'
 import Synthesis from './pages/Synthesis'
 import DraftPool from './pages/DraftPool'
+import TrainingPool from './pages/TrainingPool'
+import EvaluationPool from './pages/EvaluationPool'
 import Datasets from './pages/Datasets'
 import Evaluation from './pages/Evaluation'
 import Leaderboard from './pages/Leaderboard'
@@ -49,6 +51,14 @@ const router = createBrowserRouter([
       {
         path: 'draft-pool',
         element: <DraftPool />,
+      },
+      {
+        path: 'training-pool',
+        element: <TrainingPool />,
+      },
+      {
+        path: 'evaluation-pool',
+        element: <EvaluationPool />,
       },
       {
         path: 'datasets',

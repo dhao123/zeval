@@ -18,7 +18,8 @@ import {
   Row,
   Col,
   Typography,
-  Divider
+  Divider,
+  AutoComplete
 } from 'antd'
 import { 
   CheckOutlined, 
@@ -236,8 +237,31 @@ function DraftPool() {
     keyword: '',
     category_l4: undefined as string | undefined,
     status: undefined as string | undefined,
-    difficulty: undefined as string | undefined,
   })
+  
+  // 类目选项（用于AutoComplete）
+  const [categoryOptions, setCategoryOptions] = useState<{value: string, label: string}[]>([])
+  
+  // 获取类目选项
+  const fetchCategoryOptions = useCallback(async (keyword?: string) => {
+    try {
+      const params = new URLSearchParams()
+      if (keyword) params.append('keyword', keyword)
+      const response = await axios.get<ApiResponse<any[]>>(
+        `${API_BASE_URL}/categories/l4-options?${params.toString()}`
+      )
+      if (response.data.code === 0) {
+        setCategoryOptions(response.data.data || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch category options:', error)
+    }
+  }, [])
+  
+  // 初始加载类目选项
+  useEffect(() => {
+    fetchCategoryOptions()
+  }, [fetchCategoryOptions])
   
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [detailModalVisible, setDetailModalVisible] = useState(false)
@@ -260,7 +284,6 @@ function DraftPool() {
       
       if (filters.category_l4) params.append('category_l4', filters.category_l4)
       if (filters.status) params.append('status', filters.status)
-      if (filters.difficulty) params.append('difficulty', filters.difficulty)
       if (filters.keyword) params.append('keyword', filters.keyword)
 
       const response = await axios.get<ApiResponse<SyntheticData[]>>(
@@ -710,7 +733,6 @@ function DraftPool() {
       const params = new URLSearchParams()
       if (filters.category_l4) params.append('category_l4', filters.category_l4)
       if (filters.status) params.append('status', filters.status)
-      if (filters.difficulty) params.append('difficulty', filters.difficulty)
       
       const response = await axios.get(
         `${API_BASE_URL}${getApiPath('/draft-pool/export/download')}?${params.toString()}`,
@@ -767,17 +789,16 @@ function DraftPool() {
               onSearch={fetchData}
               allowClear
             />
-            <Select
-              placeholder="四级类目"
-              style={{ width: 150 }}
+            <AutoComplete
+              placeholder="搜索四级类目"
+              style={{ width: 320 }}
+              popupMatchSelectWidth={false}
+              dropdownStyle={{ minWidth: 400, maxWidth: 600 }}
               value={filters.category_l4}
               onChange={(value) => setFilters(prev => ({ ...prev, category_l4: value }))}
+              onSearch={fetchCategoryOptions}
+              options={categoryOptions}
               allowClear
-              options={[
-                { label: '管材管件', value: '管材管件' },
-                { label: '阀门', value: '阀门' },
-                { label: '管件', value: '管件' },
-              ]}
             />
             <Select
               placeholder="状态"
@@ -789,19 +810,6 @@ function DraftPool() {
                 { label: '草稿', value: 'draft' },
                 { label: '已确认', value: 'confirmed' },
                 { label: '已拒绝', value: 'rejected' },
-              ]}
-            />
-            <Select
-              placeholder="难度"
-              style={{ width: 120 }}
-              value={filters.difficulty}
-              onChange={(value) => setFilters(prev => ({ ...prev, difficulty: value }))}
-              allowClear
-              options={[
-                { label: '低', value: 'low' },
-                { label: '中', value: 'medium' },
-                { label: '高', value: 'high' },
-                { label: '超高', value: 'ultra' },
               ]}
             />
             <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
@@ -840,16 +848,9 @@ function DraftPool() {
               type="primary" 
               disabled={selectedRowKeys.length === 0}
               onClick={() => handleBatchConfirm('confirm')}
+              icon={<PartitionOutlined />}
             >
-              批量确认 ({selectedRowKeys.length})
-            </Button>
-            
-            <Button 
-              danger
-              disabled={selectedRowKeys.length === 0}
-              onClick={() => handleBatchConfirm('reject')}
-            >
-              批量拒绝 ({selectedRowKeys.length})
+              批量分流 ({selectedRowKeys.length})
             </Button>
           </Space>
         </div>

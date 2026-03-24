@@ -1,5 +1,5 @@
 import { Card, Tabs, Row, Col, Statistic, Progress, Table, Tag, Button, Space } from 'antd'
-import { DownloadOutlined, FileTextOutlined, BarChartOutlined } from '@ant-design/icons'
+import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons'
 
 const { TabPane } = Tabs
 

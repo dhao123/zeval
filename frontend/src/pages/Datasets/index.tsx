@@ -1,4 +1,4 @@
-import { Card, Button, Select, Radio, Alert, Descriptions, Tag, Table } from 'antd'
+import { Card, Button, Select, Radio, Alert, Descriptions, Table } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 
 const statsColumns = [

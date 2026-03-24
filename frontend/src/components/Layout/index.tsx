@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Layout as AntLayout, Menu, Avatar, Dropdown, Button, Tooltip } from 'antd'
+import { Layout as AntLayout, Menu, Avatar, Dropdown, Button } from 'antd'
 import {
   DashboardOutlined,
   DatabaseOutlined,
@@ -7,7 +7,6 @@ import {
   ToolOutlined,
   ExperimentOutlined,
   CheckCircleOutlined,
-  DownloadOutlined,
   BarChartOutlined,
   TrophyOutlined,
   FileSearchOutlined,
@@ -15,6 +14,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  PartitionOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 
@@ -42,15 +42,16 @@ const menuItems = [
     label: '数据合成',
     children: [
       { key: '/synthesis', icon: <ExperimentOutlined />, label: '合成任务' },
-      { key: '/draft-pool', icon: <CheckCircleOutlined />, label: '初创池' },
     ],
   },
   {
-    key: 'datasets',
-    icon: <DownloadOutlined />,
-    label: '数据集',
+    key: 'data-pools',
+    icon: <PartitionOutlined />,
+    label: '数据池',
     children: [
-      { key: '/datasets', icon: <DownloadOutlined />, label: '下载数据集' },
+      { key: '/draft-pool', icon: <CheckCircleOutlined />, label: '初创池' },
+      { key: '/training-pool', icon: <DatabaseOutlined />, label: '训练池' },
+      { key: '/evaluation-pool', icon: <BarChartOutlined />, label: '评测池' },
     ],
   },
   {

@@ -23,6 +23,7 @@ from app.schemas.synthetic import (
     SyntheticUploadResponse,
 )
 from app.services.base import BaseService
+from app.services.category_service import CategoryService
 
 
 class SyntheticService(BaseService[SyntheticData]):
@@ -274,9 +275,6 @@ class SyntheticService(BaseService[SyntheticData]):
         if filter_params.status:
             query = query.where(SyntheticData.status == filter_params.status)
         
-        if filter_params.difficulty:
-            query = query.where(SyntheticData.difficulty == filter_params.difficulty)
-        
         if filter_params.seed_id:
             query = query.where(SyntheticData.seed_id == filter_params.seed_id)
         
@@ -437,6 +435,22 @@ class SyntheticService(BaseService[SyntheticData]):
             
             try:
                 data = result["data"]
+                
+                # Create or get category if L4 is provided
+                if data.get("category_l4"):
+                    category_service = CategoryService(self.db)
+                    l1 = data.get("category_l1") or "未分类"
+                    l2 = data.get("category_l2") or "未分类"
+                    l3 = data.get("category_l3") or "未分类"
+                    l4 = data.get("category_l4")
+                    
+                    await category_service.get_or_create(
+                        l1=l1,
+                        l2=l2,
+                        l3=l3,
+                        l4=l4,
+                        source="upload",
+                    )
                 
                 # Create synthetic data with full category hierarchy
                 synthetic_data = SyntheticCreate(

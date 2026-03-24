@@ -1,4 +1,4 @@
-import { Card, Table, Select, Space, Tag, Button, Row, Col } from 'antd'
+import { Card, Table, Select, Tag, Button, Row, Col } from 'antd'
 import { TrophyOutlined, FilterOutlined } from '@ant-design/icons'
 
 const columns = [

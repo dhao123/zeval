@@ -77,7 +77,7 @@ const mockData: SeedData[] = [
 ]
 
 function Seeds() {
-  const [loading, setLoading] = useState(false)
+  const [loading] = useState(false)
 
   const handleUpload = (info: any) => {
     if (info.file.status === 'done') {
