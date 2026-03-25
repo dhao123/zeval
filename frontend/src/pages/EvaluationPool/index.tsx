@@ -26,6 +26,7 @@ import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
 import { Line } from '@ant-design/plots'
 import dayjs from 'dayjs'
+import { formatBeijingTime } from '@/utils/date'
 
 const { Text } = Typography
 
@@ -269,7 +270,8 @@ function EvaluationPool() {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 150,
+      width: 170,
+      render: (value: string) => formatBeijingTime(value),
     },
   ]
 

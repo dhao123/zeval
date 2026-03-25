@@ -1,6 +1,7 @@
 import { Card, Table, Button, Input, Select, Space, Tag, Steps, Form, Modal } from 'antd'
 import { PlusOutlined, EyeOutlined } from '@ant-design/icons'
 import { useState } from 'react'
+import { formatBeijingTime } from '@/utils/date'
 
 const { Step } = Steps
 
@@ -50,6 +51,7 @@ const columns = [
     title: '创建时间',
     dataIndex: 'created_at',
     key: 'created_at',
+    render: (value: string) => formatBeijingTime(value),
   },
   {
     title: '操作',

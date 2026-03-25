@@ -42,6 +42,7 @@ import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
 import { Line } from '@ant-design/plots'
 import dayjs from 'dayjs'
+import { formatBeijingTime } from '@/utils/date'
 
 const { Text, Paragraph } = Typography
 
@@ -462,8 +463,8 @@ function DraftPool() {
           <Col span={8}>
             <Text strong style={{ fontSize: 13 }}>⏰ 时间信息</Text>
             <div style={{ marginTop: 8, fontSize: 12 }}>
-              <div>创建: {record.created_at}</div>
-              {record.confirmed_at && <div>确认: {record.confirmed_at}</div>}
+              <div>创建: {formatBeijingTime(record.created_at)}</div>
+              {record.confirmed_at && <div>确认: {formatBeijingTime(record.confirmed_at)}</div>}
               {record.route_batch_id && (
                 <div>分流批次: <Tag color="green">{record.route_batch_id}</Tag></div>
               )}
@@ -1111,8 +1112,8 @@ function DraftPool() {
                   {statusMap[currentRecord.status]?.label}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="创建时间">{currentRecord.created_at}</Descriptions.Item>
-              <Descriptions.Item label="更新时间">{currentRecord.updated_at}</Descriptions.Item>
+              <Descriptions.Item label="创建时间">{formatBeijingTime(currentRecord.created_at)}</Descriptions.Item>
+              <Descriptions.Item label="更新时间">{formatBeijingTime(currentRecord.updated_at)}</Descriptions.Item>
             </Descriptions>
           </div>
         )}

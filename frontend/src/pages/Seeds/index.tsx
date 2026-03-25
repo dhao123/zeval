@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { formatBeijingTime } from '@/utils/date'
 import { Card, Table, Button, Input, Select, Space, Tag, Upload, message } from 'antd'
 import { UploadOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -43,6 +44,7 @@ const columns: ColumnsType<SeedData> = [
     title: '创建时间',
     dataIndex: 'created_at',
     key: 'created_at',
+    render: (value: string) => formatBeijingTime(value),
   },
   {
     title: '操作',

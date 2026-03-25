@@ -31,6 +31,7 @@ import type { DefaultOptionType } from 'antd/es/cascader'
 import axios from '../../utils/request'
 import ReactECharts from 'echarts-for-react'
 import dayjs from 'dayjs'
+import { formatBeijingTime } from '@/utils/date'
 
 const { Text } = Typography
 const { RangePicker } = DatePicker
@@ -525,6 +526,7 @@ function Dashboard() {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 170,
+      render: (value: string) => formatBeijingTime(value),
     },
   ]
 

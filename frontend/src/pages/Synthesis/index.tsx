@@ -1,5 +1,6 @@
 import { Card, Table, Button, Select, InputNumber, Form, Switch, Progress, Tag } from 'antd'
 import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons'
+import { formatBeijingTime } from '@/utils/date'
 
 const columns = [
   {
@@ -48,6 +49,7 @@ const columns = [
     title: '创建时间',
     dataIndex: 'created_at',
     key: 'created_at',
+    render: (value: string) => formatBeijingTime(value),
   },
   {
     title: '操作',
