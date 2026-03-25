@@ -347,7 +347,9 @@ function EvaluationPool() {
             />
             <AutoComplete
               placeholder="搜索四级类目"
-              style={{ width: 200 }}
+              style={{ width: 320 }}
+              popupMatchSelectWidth={false}
+              dropdownStyle={{ minWidth: 400, maxWidth: 600 }}
               value={filters.category_l4}
               onChange={(value) => setFilters(prev => ({ ...prev, category_l4: value }))}
               onSearch={fetchCategoryOptions}

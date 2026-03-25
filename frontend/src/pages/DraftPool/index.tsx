@@ -69,7 +69,7 @@ interface SyntheticData {
   category_l4?: string
   category_path?: string
   status: 'draft' | 'confirmed' | 'rejected'
-  difficulty: 'low' | 'medium' | 'high' | 'ultra'
+  pool_location?: 'training' | 'evaluation' | null  // 所在池位置（后端查询）
   ai_check_passed: boolean
   seed_id?: string
   standard_id?: string
@@ -96,11 +96,30 @@ interface ApiResponse<T> {
   }
 }
 
-const difficultyMap: Record<string, { label: string; color: string }> = {
-  low: { label: '低', color: 'green' },
-  medium: { label: '中', color: 'blue' },
-  high: { label: '高', color: 'orange' },
-  ultra: { label: '超高', color: 'red' },
+// 所在池映射 - 根据状态和分流情况判断
+// 所在池映射 - 优先使用后端返回的 pool_location
+const getPoolLocation = (record: SyntheticData): { label: string; color: string } => {
+  if (record.status === 'draft') {
+    return { label: '初创池', color: 'default' }
+  }
+  if (record.status === 'rejected') {
+    return { label: '-', color: 'default' }
+  }
+  if (record.status === 'confirmed') {
+    // 使用后端查询的精确池位置
+    if (record.pool_location === 'training') {
+      return { label: '训练池', color: 'green' }
+    }
+    if (record.pool_location === 'evaluation') {
+      return { label: '评测池', color: 'blue' }
+    }
+    // 已确认但尚未分流到池子
+    if (record.route_batch_id) {
+      return { label: '已确认(查询中)', color: 'orange' }
+    }
+    return { label: '已确认(待分流)', color: 'orange' }
+  }
+  return { label: '-', color: 'default' }
 }
 
 const statusMap: Record<string, { label: string; color: string }> = {
@@ -362,7 +381,7 @@ function DraftPool() {
             <div style={{ marginTop: 8, fontSize: 12 }}>
               <div>ID: <Text copyable>{record.synthetic_id}</Text></div>
               <div>版本: {record.version}</div>
-              <div>难度: <Tag color={difficultyMap[record.difficulty]?.color}>{difficultyMap[record.difficulty]?.label}</Tag></div>
+              <div>所在池: <Tag color={getPoolLocation(record).color}>{getPoolLocation(record).label}</Tag></div>
               <div>状态: <Tag color={statusMap[record.status]?.color}>{statusMap[record.status]?.label}</Tag></div>
             </div>
           </Col>
@@ -962,9 +981,9 @@ function DraftPool() {
               <Descriptions.Item label="二级类目">{currentRecord.category_l2 || '-'}</Descriptions.Item>
               <Descriptions.Item label="三级类目">{currentRecord.category_l3 || '-'}</Descriptions.Item>
               <Descriptions.Item label="四级类目">{currentRecord.category_l4 || '-'}</Descriptions.Item>
-              <Descriptions.Item label="难度">
-                <Tag color={difficultyMap[currentRecord.difficulty]?.color}>
-                  {difficultyMap[currentRecord.difficulty]?.label}
+              <Descriptions.Item label="所在池">
+                <Tag color={getPoolLocation(currentRecord).color}>
+                  {getPoolLocation(currentRecord).label}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="状态">

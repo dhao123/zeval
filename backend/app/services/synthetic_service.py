@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.synthetic import SyntheticData
+from app.models.data_pool import DataPool
 from app.schemas.common import PaginationInfo
 from app.schemas.synthetic import (
     SyntheticConfirmResponse,
@@ -245,12 +246,50 @@ class SyntheticService(BaseService[SyntheticData]):
         
         return results
     
-    async def get_by_synthetic_id(self, synthetic_id: str) -> Optional[SyntheticData]:
+    async def get_by_synthetic_id(self, synthetic_id: str) -> Optional[dict]:
         """Get synthetic data by synthetic_id."""
         result = await self.db.execute(
             select(SyntheticData).where(SyntheticData.synthetic_id == synthetic_id)
         )
-        return result.scalar_one_or_none()
+        item = result.scalar_one_or_none()
+        
+        if not item:
+            return None
+        
+        # 查询池位置信息
+        pool_query = select(DataPool).where(DataPool.source_id == synthetic_id)
+        pool_result = await self.db.execute(pool_query)
+        pool_record = pool_result.scalar_one_or_none()
+        pool_location = pool_record.pool_type if pool_record else None
+        
+        return {
+            "id": item.id,
+            "synthetic_id": item.synthetic_id,
+            "input": item.input,
+            "gt": item.gt,
+            "category_l1": item.category_l1,
+            "category_l2": item.category_l2,
+            "category_l3": item.category_l3,
+            "category_l4": item.category_l4,
+            "category_path": item.category_path,
+            "status": item.status,
+            "hash": item.hash,
+            "version": item.version,
+            "seed_id": item.seed_id,
+            "standard_id": item.standard_id,
+            "skill_id": item.skill_id,
+            "difficulty": item.difficulty,
+            "ai_check_passed": item.ai_check_passed,
+            "synthesis_params": item.synthesis_params,
+            "ai_check_result": item.ai_check_result,
+            "route_batch_id": item.route_batch_id,
+            "created_by": item.created_by,
+            "confirmed_by": item.confirmed_by,
+            "confirmed_at": item.confirmed_at,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "pool_location": pool_location,
+        }
     
     async def get_by_hash(self, hash_value: str) -> Optional[SyntheticData]:
         """Get synthetic data by hash."""
@@ -299,10 +338,52 @@ class SyntheticService(BaseService[SyntheticData]):
         result = await self.db.execute(query)
         items = result.scalars().all()
         
+        # 查询每条记录的池位置信息
+        pool_map = {}
+        if items:
+            synthetic_ids = [item.synthetic_id for item in items]
+            pool_query = select(DataPool).where(DataPool.source_id.in_(synthetic_ids))
+            pool_result = await self.db.execute(pool_query)
+            pool_records = pool_result.scalars().all()
+            pool_map = {p.source_id: p.pool_type for p in pool_records}
+        
         pages = (total + size - 1) // size
         
+        # 转换为字典列表并添加 pool_location
+        items_with_pool = []
+        for item in items:
+            item_dict = {
+                "id": item.id,
+                "synthetic_id": item.synthetic_id,
+                "input": item.input,
+                "gt": item.gt,
+                "category_l1": item.category_l1,
+                "category_l2": item.category_l2,
+                "category_l3": item.category_l3,
+                "category_l4": item.category_l4,
+                "category_path": item.category_path,
+                "status": item.status,
+                "hash": item.hash,
+                "version": item.version,
+                "seed_id": item.seed_id,
+                "standard_id": item.standard_id,
+                "skill_id": item.skill_id,
+                "difficulty": item.difficulty,
+                "ai_check_passed": item.ai_check_passed,
+                "synthesis_params": item.synthesis_params,
+                "ai_check_result": item.ai_check_result,
+                "route_batch_id": item.route_batch_id,
+                "created_by": item.created_by,
+                "confirmed_by": item.confirmed_by,
+                "confirmed_at": item.confirmed_at,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+                "pool_location": pool_map.get(item.synthetic_id),
+            }
+            items_with_pool.append(item_dict)
+        
         return {
-            "items": list(items),
+            "items": items_with_pool,
             "pagination": PaginationInfo(
                 page=page,
                 size=size,

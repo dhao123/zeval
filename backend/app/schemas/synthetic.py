@@ -57,6 +57,7 @@ class SyntheticRead(SyntheticBase):
     
     # 分流信息
     route_batch_id: Optional[str] = Field(default=None, description="分流批次ID")
+    pool_location: Optional[str] = Field(default=None, description="所在池位置：training/evaluation/null")
     
     # 用户追踪
     created_by: Optional[int] = Field(default=None, description="创建者ID")
