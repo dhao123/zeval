@@ -30,6 +30,12 @@ class DataPool(Base):
     route_ratio: Mapped[Optional[float]] = mapped_column(Numeric(3, 2))
     is_frozen: Mapped[bool] = mapped_column(Boolean, default=False)
     download_count: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # 用户追踪（用于数据隔离）
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), comment="创建者/上传者")
+    
+    # Relationships
+    creator: Mapped[Optional["User"]] = relationship("User")
 
 
 class RouteConfig(Base):

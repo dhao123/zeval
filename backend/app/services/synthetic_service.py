@@ -303,9 +303,23 @@ class SyntheticService(BaseService[SyntheticData]):
         filter_params: SyntheticFilter,
         page: int = 1,
         size: int = 20,
+        user_id: Optional[int] = None,
+        is_admin: bool = False,
     ) -> dict:
-        """Get synthetic data list with filtering."""
+        """Get synthetic data list with filtering.
+        
+        Args:
+            filter_params: 筛选条件
+            page: 页码
+            size: 每页大小
+            user_id: 当前用户ID
+            is_admin: 是否为管理员
+        """
         query = select(SyntheticData)
+        
+        # 用户数据隔离：非管理员只能看到自己的数据
+        if not is_admin and user_id is not None:
+            query = query.where(SyntheticData.created_by == user_id)
         
         # Apply filters
         if filter_params.category_l4:

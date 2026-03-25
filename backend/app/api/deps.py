@@ -12,6 +12,8 @@ from app.core.database import get_async_session
 from app.core.logging import get_logger
 from app.core.security import decode_token
 from app.models.user import User
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.services.user_service import UserService
 
 logger = get_logger(__name__)
@@ -50,8 +52,12 @@ async def get_current_user(
     if user_id is None or token_type != "access":
         raise credentials_exception
     
-    user_service = UserService(db)
-    user = await user_service.get_by_id(int(user_id))
+    # 查询用户并预加载 role 关系
+    from app.models.user import User as UserModel
+    result = await db.execute(
+        select(UserModel).options(selectinload(UserModel.role)).where(UserModel.id == int(user_id))
+    )
+    user = result.scalar_one_or_none()
     
     if user is None or not user.is_active:
         raise credentials_exception

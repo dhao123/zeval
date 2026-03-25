@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Card,
   Row,
@@ -11,6 +11,11 @@ import {
   Alert,
   Typography,
   Tooltip,
+  Select,
+  DatePicker,
+  Button,
+  Space,
+  Cascader,
 } from 'antd'
 import {
   DatabaseOutlined,
@@ -18,14 +23,21 @@ import {
   CheckCircleOutlined,
   TrophyOutlined,
   BarChartOutlined,
+  RiseOutlined,
+  SearchOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import axios from 'axios'
+import type { DefaultOptionType } from 'antd/es/cascader'
+import axios from '../../utils/request'
+import { Line } from '@ant-design/plots'
+import dayjs from 'dayjs'
 
 const { Text } = Typography
+const { RangePicker } = DatePicker
 
 // API 基础URL
-const API_BASE_URL = '/api/v1'
+// request.ts 的 baseURL 已经包含 /api/v1，所以这里不需要再加前缀
+const API_PREFIX = ''
 
 // 统计数据接口
 interface CategoryStats {
@@ -49,6 +61,15 @@ interface Category {
   created_at: string
   updated_at: string
   stats?: CategoryStats
+}
+
+// 趋势数据点
+interface TrendDataPoint {
+  date: string
+  total: number
+  draft: number
+  training: number
+  evaluation: number
 }
 
 // 仪表盘数据接口
@@ -159,35 +180,230 @@ const DistributionBar = ({ stats }: { stats?: CategoryStats }) => {
   )
 }
 
+// 趋势图表组件
+const TrendChart = ({
+  data,
+  loading,
+}: {
+  data: TrendDataPoint[]
+  loading: boolean
+}) => {
+  const config = useMemo(() => {
+    return {
+      data: data.flatMap((item) => [
+        { date: item.date, value: item.total, type: '总数据量' },
+        { date: item.date, value: item.draft, type: '初创池(草稿)' },
+        { date: item.date, value: item.training, type: '训练池' },
+        { date: item.date, value: item.evaluation, type: '评测池' },
+      ]),
+      xField: 'date',
+      yField: 'value',
+      seriesField: 'type',
+      smooth: true,
+      animation: {
+        appear: {
+          animation: 'path-in',
+          duration: 1000,
+        },
+      },
+      color: ['#1890ff', '#fa8c16', '#52c41a', '#13c2c2'],
+      xAxis: {
+        title: { text: '日期' },
+      },
+      yAxis: {
+        title: { text: '数据量' },
+        minInterval: 1,
+      },
+      legend: {
+        position: 'top-right',
+      },
+      tooltip: {
+        showMarkers: true,
+        shared: true,
+      },
+      areaStyle: {
+        fillOpacity: 0.15,
+      },
+    }
+  }, [data])
+
+  if (loading) {
+    return (
+      <div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin tip="加载趋势数据..." />
+      </div>
+    )
+  }
+
+  if (data.length === 0) {
+    return (
+      <div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
+        暂无数据
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ height: 350 }}>
+      <Line {...config} />
+    </div>
+  )
+}
+
 function Dashboard() {
   const [loading, setLoading] = useState(false)
+  const [trendLoading, setTrendLoading] = useState(false)
   const [data, setData] = useState<DashboardData | null>(null)
+  const [trendData, setTrendData] = useState<TrendDataPoint[]>([])
   const [error, setError] = useState<string | null>(null)
+  
+  // 筛选器状态
+  const [timeRange, setTimeRange] = useState<number>(7)
+  const [customDates, setCustomDates] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<DefaultOptionType[]>([])
 
+  // 获取类目选项（级联选择器）
+  const fetchCategoryOptions = useCallback(async () => {
+    try {
+      const data = await axios.get<ApiResponse<{ items: Category[]; total: number }>>(
+        `${API_PREFIX}/categories?include_stats=false&limit=1000`
+      ) as any
+      if (data.code === 0) {
+        const categories = data.data.items || []
+        // 构建级联选项
+        const options: DefaultOptionType[] = []
+        const l1Map = new Map<string, DefaultOptionType>()
+        
+        categories.forEach((cat: Category) => {
+          if (!l1Map.has(cat.l1_name)) {
+            const l1Option: DefaultOptionType = {
+              value: cat.l1_name,
+              label: cat.l1_name,
+              children: [],
+            }
+            l1Map.set(cat.l1_name, l1Option)
+            options.push(l1Option)
+          }
+          
+          const l1Option = l1Map.get(cat.l1_name)!
+          let l2Option = (l1Option.children as DefaultOptionType[])?.find(
+            (c) => c.value === cat.l2_name
+          )
+          
+          if (!l2Option) {
+            l2Option = {
+              value: cat.l2_name,
+              label: cat.l2_name,
+              children: [],
+            }
+            l1Option.children = [...(l1Option.children || []), l2Option]
+          }
+          
+          let l3Option = (l2Option.children as DefaultOptionType[])?.find(
+            (c) => c.value === cat.l3_name
+          )
+          
+          if (!l3Option) {
+            l3Option = {
+              value: cat.l3_name,
+              label: cat.l3_name,
+              children: [],
+            }
+            l2Option.children = [...(l2Option.children || []), l3Option]
+          }
+          
+          const l4Exists = (l3Option.children as DefaultOptionType[])?.some(
+            (c) => c.value === cat.l4_name
+          )
+          if (!l4Exists) {
+            l3Option.children = [
+              ...(l3Option.children || []),
+              { value: cat.l4_name, label: cat.l4_name },
+            ]
+          }
+        })
+        
+        setCategoryOptions(options)
+      }
+    } catch (err) {
+      console.error('Failed to fetch category options:', err)
+    }
+  }, [])
+
+  // 获取仪表盘基础数据
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await axios.get<ApiResponse<DashboardData>>(
-        `${API_BASE_URL}/categories/dashboard`
-      )
+      const data = await axios.get<ApiResponse<DashboardData>>(
+        `${API_PREFIX}/categories/dashboard`
+      ) as any
 
-      if (response.data.code === 0) {
-        setData(response.data.data)
+      if (data.code === 0) {
+        setData(data.data)
       } else {
-        setError(response.data.message || '获取数据失败')
+        setError(data.message || '获取数据失败')
       }
     } catch (err: any) {
       console.error('Fetch dashboard error:', err)
-      setError(err.response?.data?.message || '获取数据失败，请检查网络连接')
+      setError(err.message || '获取数据失败，请检查网络连接')
     } finally {
       setLoading(false)
     }
   }, [])
 
+  // 获取趋势数据
+  const fetchTrendData = useCallback(async () => {
+    setTrendLoading(true)
+    try {
+      const params = new URLSearchParams()
+      
+      // 时间范围
+      if (customDates && customDates[0] && customDates[1]) {
+        params.append('start_date', customDates[0].format('YYYY-MM-DD'))
+        params.append('end_date', customDates[1].format('YYYY-MM-DD'))
+      } else {
+        params.append('days', String(timeRange))
+      }
+      
+      // 类目筛选
+      if (selectedCategory.length >= 1) {
+        params.append('category_l1', selectedCategory[0])
+      }
+      if (selectedCategory.length >= 2) {
+        params.append('category_l2', selectedCategory[1])
+      }
+      if (selectedCategory.length >= 3) {
+        params.append('category_l3', selectedCategory[2])
+      }
+      if (selectedCategory.length >= 4) {
+        params.append('category_l4', selectedCategory[3])
+      }
+
+      const data = await axios.get<ApiResponse<{ trend: TrendDataPoint[] }>>(
+        `${API_PREFIX}/dashboard/trend?${params.toString()}`
+      ) as any
+
+      if (data.code === 0) {
+        setTrendData(data.data.trend)
+      }
+    } catch (err) {
+      console.error('Fetch trend error:', err)
+    } finally {
+      setTrendLoading(false)
+    }
+  }, [timeRange, customDates, selectedCategory])
+
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+    fetchCategoryOptions()
+  }, [fetchData, fetchCategoryOptions])
+
+  // 时间范围变化时自动获取趋势数据
+  useEffect(() => {
+    fetchTrendData()
+  }, [fetchTrendData])
 
   // 表格列定义
   const columns: ColumnsType<Category> = [
@@ -274,6 +490,21 @@ function Dashboard() {
     },
   ]
 
+  // 处理时间范围变化
+  const handleTimeRangeChange = (value: number) => {
+    setTimeRange(value)
+    setCustomDates(null)
+  }
+
+  // 处理自定义日期变化
+  const handleCustomDateChange = (dates: any) => {
+    if (dates && dates[0] && dates[1]) {
+      setCustomDates([dates[0], dates[1]])
+    } else {
+      setCustomDates(null)
+    }
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -294,6 +525,7 @@ function Dashboard() {
       )}
 
       <Spin spinning={loading} tip="加载中...">
+        {/* 第一行：核心指标卡 */}
         <Row gutter={[16, 16]}>
           <Col span={4}>
             <Card>
@@ -310,6 +542,7 @@ function Dashboard() {
                 title="初创池总量"
                 value={data?.total_draft || 0}
                 prefix={<DatabaseOutlined />}
+                valueStyle={{ color: '#fa8c16' }}
               />
             </Card>
           </Col>
@@ -319,6 +552,7 @@ function Dashboard() {
                 title="训练池总量"
                 value={data?.total_training || 0}
                 prefix={<FileTextOutlined />}
+                valueStyle={{ color: '#52c41a' }}
               />
             </Card>
           </Col>
@@ -328,6 +562,7 @@ function Dashboard() {
                 title="评测池总量"
                 value={data?.total_evaluation || 0}
                 prefix={<CheckCircleOutlined />}
+                valueStyle={{ color: '#1890ff' }}
               />
             </Card>
           </Col>
@@ -337,11 +572,72 @@ function Dashboard() {
                 title="总数据量"
                 value={data?.total_data || 0}
                 prefix={<TrophyOutlined />}
+                valueStyle={{ color: '#722ed1' }}
               />
             </Card>
           </Col>
         </Row>
 
+        {/* 第二行：全局数据增量趋势 */}
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col span={24}>
+            <Card
+              title={
+                <Space>
+                  <RiseOutlined style={{ color: '#1890ff' }} />
+                  <span>数据增长趋势</span>
+                </Space>
+              }
+              extra={
+                <Space>
+                  <Cascader
+                    options={categoryOptions}
+                    onChange={(value) => setSelectedCategory(value as string[])}
+                    placeholder="筛选类目"
+                    style={{ width: 200 }}
+                    allowClear
+                    changeOnSelect
+                  />
+                  <Select
+                    value={timeRange}
+                    onChange={handleTimeRangeChange}
+                    style={{ width: 120 }}
+                    options={[
+                      { label: '最近7天', value: 7 },
+                      { label: '最近14天', value: 14 },
+                      { label: '最近30天', value: 30 },
+                    ]}
+                  />
+                  <RangePicker
+                    value={customDates}
+                    onChange={handleCustomDateChange}
+                    style={{ width: 240 }}
+                    placeholder={['开始日期', '结束日期']}
+                  />
+                  <Button
+                    type="primary"
+                    icon={<SearchOutlined />}
+                    onClick={fetchTrendData}
+                    loading={trendLoading}
+                  >
+                    查询
+                  </Button>
+                </Space>
+              }
+            >
+              <TrendChart data={trendData} loading={trendLoading} />
+              <div style={{ marginTop: 16, padding: '12px 16px', background: '#f6ffed', borderRadius: 6 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  <strong>数据关系说明：</strong>
+                  总数据量 = 初创池(草稿态) + 训练池 + 评测池；
+                  初创池(已确认) = 训练池 + 评测池
+                </Text>
+              </div>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* 第三行：类目统计详情 */}
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col span={24}>
             <Card title="类目统计详情">

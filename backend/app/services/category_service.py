@@ -175,7 +175,7 @@ class CategoryService(BaseService[Category]):
     
     async def get_category_stats(self, category: Category) -> CategoryStats:
         """Get statistics for a category."""
-        # Draft pool count - match all 4 levels for accuracy
+        # Draft pool count - 只统计草稿态(status='draft')
         draft_result = await self.db.execute(
             select(func.count()).select_from(SyntheticData).where(
                 and_(
@@ -183,6 +183,7 @@ class CategoryService(BaseService[Category]):
                     SyntheticData.category_l2 == category.l2_name,
                     SyntheticData.category_l3 == category.l3_name,
                     SyntheticData.category_l4 == category.l4_name,
+                    SyntheticData.status == "draft",
                 )
             )
         )

@@ -40,6 +40,7 @@ async def list_draft_pool(
     查询初创池（合成数据）列表。
     
     支持按类目、状态、难度、种子ID筛选，支持关键词搜索。
+    非管理员只能查看自己创建的数据。
     """
     service = SyntheticService(db)
     filter_params = SyntheticFilter(
@@ -49,10 +50,15 @@ async def list_draft_pool(
         keyword=keyword,
     )
     
+    # 判断是否为管理员
+    is_admin = current_user.role is not None and current_user.role.name == "admin"
+    
     result = await service.get_list(
         filter_params=filter_params,
         page=pagination.page,
         size=pagination.size,
+        user_id=current_user.id,
+        is_admin=is_admin,
     )
     
     return PaginatedResponse(

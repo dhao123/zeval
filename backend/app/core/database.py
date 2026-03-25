@@ -9,6 +9,12 @@ from sqlalchemy import create_engine
 
 from app.core.config import settings
 
+# Connection pool settings for high concurrency
+POOL_SIZE = 20
+MAX_OVERFLOW = 30
+POOL_TIMEOUT = 30
+POOL_RECYCLE = 3600
+
 # Create engines based on database URL
 if "sqlite" in settings.database_url:
     # SQLite specific configuration
@@ -25,16 +31,24 @@ if "sqlite" in settings.database_url:
         connect_args={"check_same_thread": False},
     )
 else:
-    # PostgreSQL configuration
+    # PostgreSQL configuration with optimized pool settings
     async_engine = create_async_engine(
         settings.database_url,
         echo=settings.debug,
         future=True,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_OVERFLOW,
+        pool_timeout=POOL_TIMEOUT,
+        pool_recycle=POOL_RECYCLE,
     )
     sync_engine = create_engine(
         settings.database_url_sync,
         echo=settings.debug,
         future=True,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_OVERFLOW,
+        pool_timeout=POOL_TIMEOUT,
+        pool_recycle=POOL_RECYCLE,
     )
 
 # Async session factory

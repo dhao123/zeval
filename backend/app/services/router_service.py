@@ -136,6 +136,7 @@ class RouterService(BaseService[RouteConfig]):
                     gt=item.gt,  # 训练池包含GT
                     route_batch_id=batch_id,
                     route_ratio=config.train_ratio,
+                    created_by=item.created_by,  # 继承创建者
                 )
                 self.db.add(data_pool)
                 
@@ -154,6 +155,7 @@ class RouterService(BaseService[RouteConfig]):
                     gt=item.gt,  # 评测池也存储GT，用于评分
                     route_batch_id=batch_id,
                     route_ratio=config.eval_ratio,
+                    created_by=item.created_by,  # 继承创建者
                 )
                 self.db.add(data_pool)
                 
