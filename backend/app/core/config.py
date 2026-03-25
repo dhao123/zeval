@@ -61,8 +61,13 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     
     # SSO Configuration
-    sso_enabled: bool = True  # Enable/disable SSO authentication
+    # SSO is required for AITest-compatible authentication
+    sso_enabled: bool = True  # Enabled by default
+    sso_service_url: str = "https://security-service-uat.zkh360.com"  # SSO service URL
     admin_role_id: int = 1885  # Admin role ID from security service
+    
+    # Local auth (always enabled for fallback)
+    local_auth_enabled: bool = True
     
     @property
     def cors_origin_list(self) -> List[str]:

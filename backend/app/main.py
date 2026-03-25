@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import api_router
+from app.api.v1 import api_router, security
 from app.auth.middleware import auth_middleware
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
@@ -58,6 +58,10 @@ def create_application() -> FastAPI:
     
     # Include API routers
     app.include_router(api_router, prefix="/api")
+    
+    # Include security service proxy routes (AITest compatible)
+    # These routes proxy to the company SSO service
+    app.include_router(security.router, prefix="/api-security", tags=["Security Service"])
     
     # Health check endpoint
     @app.get("/health")

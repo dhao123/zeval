@@ -32,11 +32,18 @@ export default defineConfig({
         changeOrigin: true,
       },
       // AITest: SSO Authentication service proxy
-      '/api-auth': {
-        target: 'https://security-service-uat.zkh360.com',
+      '/api-auth/': {
+        target: 'https://api-fe-boss-uat.zkh360.com',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api-auth/, ''),
+        xfwd: true,
+      },
+      // AITest: Security service proxy
+      '/api-security/': {
+        target: 'https://api-fe-boss-uat.zkh360.com',
+        changeOrigin: true,
+        secure: false,
+        xfwd: true,
       },
     },
   },

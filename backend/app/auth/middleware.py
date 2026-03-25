@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from app.auth.dependencies import get_current_user_optional
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +32,7 @@ EXEMPT_PATHS = {
 EXEMPT_PREFIXES = [
     "/static/",
     "/api/v1/auth/login",  # Keep local login endpoint for backward compatibility
+    "/api-security/",  # Security service proxy handles its own auth
 ]
 
 
@@ -116,12 +118,13 @@ async def auth_middleware(request: Request, call_next):
         raise
     except Exception as e:
         logger.error(f"Authentication middleware error: {e}", exc_info=True)
-        # Return 500 for unexpected errors
+        # Return 500 for unexpected errors with detailed message in debug mode
+        error_msg = str(e) if settings.debug else "认证服务异常"
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "code": 500,
-                "message": "认证服务异常",
+                "message": f"认证服务异常: {error_msg}",
                 "data": None,
             },
         )

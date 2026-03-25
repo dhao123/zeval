@@ -1,5 +1,5 @@
 """
-Authentication dependencies for SSO integration.
+Authentication dependencies for SSO integration (AITest compatible).
 
 This module provides dependencies for authenticating users via the external
 security service (SSO). It validates the access_token from cookies or headers

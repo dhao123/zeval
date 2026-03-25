@@ -3,7 +3,7 @@ API v1 routes.
 """
 from fastapi import APIRouter
 
-from app.api.v1 import auth, category, dashboard, data_pools, datasets, draft_pool, evaluation, leaderboard, reports, router, seeds, skills, standards, synthesis, users
+from app.api.v1 import auth, category, dashboard, data_pools, datasets, draft_pool, evaluation, leaderboard, reports, router, seeds, skills, standards, synthesis, users, security
 
 api_router = APIRouter(prefix="/v1")
 

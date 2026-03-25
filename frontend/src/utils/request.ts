@@ -52,8 +52,9 @@ request.interceptors.response.use(
         message.error(data.message || '请求失败')
         return Promise.reject(new Error(data.message || 'Request failed'))
       }
-      // Return the data field for successful responses
-      return data.data !== undefined ? data.data : data
+      // Return the full response data (including code, message, data)
+      // Frontend expects to access data.code and data.data
+      return data
     }
     
     return data

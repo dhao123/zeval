@@ -8,10 +8,11 @@ class AuthConstants:
     """Authentication related constants."""
     
     # Security service hosts for different environments
+    # Use direct security service URL for backend access
     __hosts = {
         "security": {
             "PRO": "http://security-service-zkh360-com.share:8080",
-            "UAT": "http://security-service-uat-zkh360-com.share:8080",
+            "UAT": "https://security-service-uat.zkh360.com",
             "LOCAL": "https://security-service-uat.zkh360.com",
         }
     }
