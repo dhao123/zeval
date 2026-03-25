@@ -19,10 +19,24 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // AITest compatible: /api-auth/* routes proxy to company auth service
     proxy: {
-      '/api': {
+      // Main API proxy - only proxy /api/v1 to backend
+      '/api/v1': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+      },
+      // Health check proxy
+      '/api/health': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      // AITest: SSO Authentication service proxy
+      '/api-auth': {
+        target: 'https://security-service-uat.zkh360.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api-auth/, ''),
       },
     },
   },

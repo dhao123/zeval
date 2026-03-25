@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     
+    # SSO Configuration
+    sso_enabled: bool = True  # Enable/disable SSO authentication
+    admin_role_id: int = 1885  # Admin role ID from security service
+    
     @property
     def cors_origin_list(self) -> List[str]:
         """Parse CORS origins string to list."""

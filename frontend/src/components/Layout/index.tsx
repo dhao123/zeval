@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Layout as AntLayout, Menu, Avatar, Dropdown, Button } from 'antd'
+import { Layout as AntLayout, Menu, Avatar, Dropdown, Button, Spin } from 'antd'
 import {
   DashboardOutlined,
   DatabaseOutlined,
@@ -15,8 +15,11 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PartitionOutlined,
+  LoginOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useUser } from '@/hooks/useUser'
+import { redirectToSSOLogin, redirectToSSOLogout } from '@/utils/request'
 
 const { Header, Sider, Content } = AntLayout
 
@@ -66,23 +69,13 @@ const menuItems = [
   },
 ]
 
-const userMenuItems = [
-  {
-    key: 'profile',
-    icon: <UserOutlined />,
-    label: '个人中心',
-  },
-  {
-    key: 'logout',
-    icon: <LogoutOutlined />,
-    label: '退出登录',
-  },
-]
-
 function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  
+  // Get user info from SSO
+  const { user, isLoading, isLogin } = useUser()
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key)
@@ -90,15 +83,45 @@ function Layout() {
 
   const handleUserMenuClick = ({ key }: { key: string }) => {
     if (key === 'logout') {
-      navigate('/login')
+      redirectToSSOLogout()
+    } else if (key === 'login') {
+      redirectToSSOLogin()
     }
   }
+
+  // User menu items based on login state
+  const userMenuItems = isLogin
+    ? [
+        {
+          key: 'user-info',
+          label: (
+            <div style={{ padding: '8px 0' }}>
+              <div style={{ fontWeight: 'bold' }}>{user?.nickname || user?.username}</div>
+              <div style={{ fontSize: '12px', color: '#999' }}>{user?.email}</div>
+            </div>
+          ),
+          disabled: true,
+        },
+        { type: 'divider' as const },
+        {
+          key: 'logout',
+          icon: <LogoutOutlined />,
+          label: '退出登录',
+        },
+      ]
+    : [
+        {
+          key: 'login',
+          icon: <LoginOutlined />,
+          label: '登录',
+        },
+      ]
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
       {/* 左侧侧边栏 - 可收缩 */}
-      <Sider 
-        width={240} 
+      <Sider
+        width={240}
         theme="dark"
         collapsible
         collapsed={collapsed}
@@ -115,23 +138,25 @@ function Layout() {
         }}
       >
         {/* Logo区域 */}
-        <div style={{ 
-          height: 64, 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: collapsed ? 'center' : 'center',
-          color: '#fff',
-          fontSize: collapsed ? 14 : 18,
-          fontWeight: 'bold',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          padding: collapsed ? '0 8px' : '0 16px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
+        <div
+          style={{
+            height: 64,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: collapsed ? 'center' : 'center',
+            color: '#fff',
+            fontSize: collapsed ? 14 : 18,
+            fontWeight: 'bold',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            padding: collapsed ? '0 8px' : '0 16px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
           {collapsed ? 'ZKH' : 'ZKH Benchmark'}
         </div>
-        
+
         {/* 菜单 */}
         <Menu
           theme="dark"
@@ -145,12 +170,14 @@ function Layout() {
       </Sider>
 
       {/* 右侧内容区域 */}
-      <AntLayout style={{ marginLeft: collapsed ? 80 : 240, transition: 'all 0.2s' }}>
+      <AntLayout
+        style={{ marginLeft: collapsed ? 80 : 240, transition: 'all 0.2s' }}
+      >
         {/* 固定Header */}
-        <Header 
-          style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
+        <Header
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
             alignItems: 'center',
             padding: '0 24px',
             background: '#fff',
@@ -175,24 +202,42 @@ function Layout() {
               震坤行 Benchmark 评测平台
             </h1>
           </div>
-          
+
+          {/* User section */}
           <Dropdown
             menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
             placement="bottomRight"
           >
-            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar icon={<UserOutlined />} />
-              <span>管理员</span>
+            <div
+              style={{
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {isLoading ? (
+                <Spin size="small" />
+              ) : (
+                <>
+                  <Avatar icon={<UserOutlined />} />
+                  <span>
+                    {isLogin
+                      ? user?.nickname || user?.username || '用户'
+                      : '未登录'}
+                  </span>
+                </>
+              )}
             </div>
           </Dropdown>
         </Header>
 
         {/* 内容区域 - 需要padding-top避开固定Header */}
-        <Content 
-          style={{ 
-            margin: '88px 24px 24px', 
-            padding: 24, 
-            background: '#fff', 
+        <Content
+          style={{
+            margin: '88px 24px 24px',
+            padding: 24,
+            background: '#fff',
             borderRadius: 4,
             minHeight: 'calc(100vh - 112px)',
           }}

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
+from app.auth.middleware import auth_middleware
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.database import init_db
@@ -42,7 +43,7 @@ def create_application() -> FastAPI:
         lifespan=lifespan,
     )
     
-    # CORS middleware
+    # CORS middleware - must be before auth middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -50,6 +51,10 @@ def create_application() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    # SSO Auth middleware (only if SSO is enabled)
+    if settings.sso_enabled:
+        app.middleware("http")(auth_middleware)
     
     # Include API routers
     app.include_router(api_router, prefix="/api")

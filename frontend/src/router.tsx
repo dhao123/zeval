@@ -1,6 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
-import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Seeds from './pages/Seeds'
 import Standards from './pages/Standards'
@@ -15,10 +14,20 @@ import Leaderboard from './pages/Leaderboard'
 import Reports from './pages/Reports'
 import NotFound from './pages/NotFound'
 
+/**
+ * Router configuration (AITest compatible)
+ * 
+ * Auth routes:
+ * - /api-auth/*  -> Proxied to company SSO service (handled by vite proxy)
+ * - /login       -> Redirect to /api-auth/login
+ * 
+ * Protected routes: All routes under Layout require authentication
+ */
 const router = createBrowserRouter([
+  // Legacy login route (redirect to SSO auth route)
   {
     path: '/login',
-    element: <Login />,
+    element: <Navigate to="/api-auth/login" replace />,
   },
   {
     path: '/',
