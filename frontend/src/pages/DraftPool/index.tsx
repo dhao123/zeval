@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { 
   Card, 
   Table, 
@@ -19,7 +19,8 @@ import {
   Col,
   Typography,
   Divider,
-  AutoComplete
+  AutoComplete,
+  Statistic
 } from 'antd'
 import { 
   CheckOutlined, 
@@ -33,10 +34,14 @@ import {
   ReloadOutlined,
   FullscreenOutlined,
   CompressOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  DatabaseOutlined,
+  RiseOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
+import { Line } from '@ant-design/plots'
+import dayjs from 'dayjs'
 
 const { Text, Paragraph } = Typography
 
@@ -94,6 +99,31 @@ interface ApiResponse<T> {
     total: number
     pages: number
   }
+}
+
+// 计算日增量数据
+const calculateDailyIncrement = (data: SyntheticData[], days: number = 7) => {
+  const endDate = dayjs()
+  const startDate = endDate.subtract(days - 1, 'day')
+  
+  const dateMap: Record<string, number> = {}
+  for (let i = 0; i < days; i++) {
+    const date = startDate.add(i, 'day').format('YYYY-MM-DD')
+    dateMap[date] = 0
+  }
+  
+  data.forEach(item => {
+    const date = dayjs(item.created_at).format('YYYY-MM-DD')
+    if (dateMap.hasOwnProperty(date)) {
+      dateMap[date]++
+    }
+  })
+  
+  return Object.entries(dateMap).map(([date, count]) => ({
+    date: dayjs(date).format('MM-DD'),
+    fullDate: date,
+    count,
+  }))
 }
 
 // 所在池映射 - 根据状态和分流情况判断
@@ -261,6 +291,9 @@ function DraftPool() {
   // 类目选项（用于AutoComplete）
   const [categoryOptions, setCategoryOptions] = useState<{value: string, label: string}[]>([])
   
+  // 时间范围选择
+  const [timeRange, setTimeRange] = useState(7)
+  
   // 获取类目选项
   const fetchCategoryOptions = useCallback(async (keyword?: string) => {
     try {
@@ -331,6 +364,47 @@ function DraftPool() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // 计算日增量数据
+  const dailyData = useMemo(() => {
+    return calculateDailyIncrement(data, timeRange)
+  }, [data, timeRange])
+
+  // 平滑折线图配置
+  const lineConfig = useMemo(() => ({
+    data: dailyData,
+    xField: 'date',
+    yField: 'count',
+    smooth: true,
+    color: '#fa8c16',
+    xAxis: {
+      title: { text: '日期' },
+    },
+    yAxis: {
+      title: { text: '数据量' },
+      minInterval: 1,
+    },
+    meta: {
+      date: { alias: '日期' },
+      count: { alias: '数据量' },
+    },
+    areaStyle: {
+      fill: 'l(270) 0:#ffffff 0.5:#ffd8bf 1:#fa8c16',
+      opacity: 0.3,
+    },
+    point: {
+      size: 4,
+      shape: 'circle',
+      style: {
+        fill: '#fa8c16',
+        stroke: '#fff',
+        lineWidth: 2,
+      },
+    },
+    tooltip: {
+      showMarkers: true,
+    },
+  }), [dailyData])
 
   // 可展开的行内容 - 展示完整信息
   const expandedRowRender = (record: SyntheticData) => {
@@ -796,6 +870,52 @@ function DraftPool() {
         showIcon
         style={{ marginBottom: 16 }}
       />
+
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={6}>
+          <Card style={{ height: 180 }}>
+            <Statistic
+              title="初创池数据量"
+              value={pagination.total}
+              prefix={<DatabaseOutlined />}
+              valueStyle={{ color: '#fa8c16' }}
+            />
+          </Card>
+        </Col>
+        <Col span={18}>
+          <Card 
+            style={{ height: 180 }}
+            title={
+              <Space>
+                <RiseOutlined style={{ color: '#fa8c16' }} />
+                <span>日增量趋势</span>
+                <Select
+                  value={timeRange}
+                  onChange={setTimeRange}
+                  options={[
+                    { label: '最近7天', value: 7 },
+                    { label: '最近14天', value: 14 },
+                    { label: '最近30天', value: 30 },
+                  ]}
+                  size="small"
+                  style={{ width: 100 }}
+                />
+              </Space>
+            }
+            bodyStyle={{ padding: '8px 12px', height: 'calc(100% - 48px)' }}
+          >
+            {dailyData.length > 0 && dailyData.some(d => d.count > 0) ? (
+              <div style={{ height: '100%' }}>
+                <Line {...lineConfig} />
+              </div>
+            ) : (
+              <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
+                暂无数据
+              </div>
+            )}
+          </Card>
+        </Col>
+      </Row>
 
       <Card>
         <div className="table-actions" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

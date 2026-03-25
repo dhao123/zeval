@@ -17,12 +17,15 @@ class DashboardOverview(BaseModel):
 
 
 class TrendDataPoint(BaseModel):
-    """Single data point for trend chart."""
+    """Single data point for trend chart (双轴组合图).
+    
+    柱状图数据：按一级类目分组的 daily counts
+    折线图数据：总数据量
+    """
     date: str = Field(..., description="日期 (YYYY-MM-DD)")
-    total: int = Field(..., description="总数据量")
-    draft: int = Field(..., description="初创池草稿态数量")
-    training: int = Field(..., description="训练池数量")
-    evaluation: int = Field(..., description="评测池数量")
+    total: int = Field(..., description="总数据量（折线图）")
+    # 按一级类目分组的柱状图数据，例如 {"建材": 10, "管材管件": 20}
+    category_counts: Dict[str, int] = Field(..., description="各一级类目数据量")
 
 
 class TrendSummary(BaseModel):
@@ -35,8 +38,10 @@ class TrendSummary(BaseModel):
 
 class TrendResponse(BaseModel):
     """Trend data response."""
-    trend: List[TrendDataPoint] = Field(..., description="趋势数据列表")
+    trend: List[TrendDataPoint] = Field(..., description="趋势数据列表（支持双轴组合图）")
     summary: Dict[str, int] = Field(..., description="当前汇总数据")
+    # 所有一级类目列表，用于图例
+    categories: List[str] = Field(..., description="一级类目列表")
 
 
 class TrendQuery(BaseModel):

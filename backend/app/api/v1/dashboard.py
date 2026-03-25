@@ -167,15 +167,19 @@ async def get_trend(
         user_filters_synthetic.append(SyntheticData.created_by == current_user.id)
         user_filters_datapool.append(DataPool.created_by == current_user.id)
     
-    # 查询每天的数据量
+    # 查询每天的数据量（按一级类目分组，用于双轴组合图）
     trend_data = []
+    all_categories = set()  # 收集所有一级类目
     
     for d in date_list:
         day_start = datetime.combine(d, datetime.min.time())
         day_end = datetime.combine(d, datetime.max.time())
         
-        # 1. 查询初创池草稿态数量（按创建时间）
-        draft_query = select(func.count()).select_from(SyntheticData).where(
+        # 按一级类目分组查询初创池草稿态数量
+        draft_by_category_query = select(
+            SyntheticData.category_l1,
+            func.count()
+        ).where(
             and_(
                 SyntheticData.status == "draft",
                 SyntheticData.created_at >= day_start,
@@ -183,12 +187,18 @@ async def get_trend(
                 *category_filters_synthetic,
                 *user_filters_synthetic
             )
-        )
-        draft_result = await db.execute(draft_query)
-        draft_count = draft_result.scalar() or 0
+        ).group_by(SyntheticData.category_l1)
         
-        # 2. 查询训练池数量（按创建时间）
-        training_query = select(func.count()).select_from(DataPool).where(
+        draft_result = await db.execute(draft_by_category_query)
+        draft_by_category = {row[0]: row[1] for row in draft_result.fetchall() if row[0]}
+        
+        # 按一级类目分组查询训练池数量（通过 source_id 关联到 synthetic_data）
+        training_by_category_query = select(
+            SyntheticData.category_l1,
+            func.count()
+        ).select_from(DataPool).join(
+            SyntheticData, DataPool.source_id == SyntheticData.synthetic_id
+        ).where(
             and_(
                 DataPool.pool_type == "training",
                 DataPool.created_at >= day_start,
@@ -196,12 +206,18 @@ async def get_trend(
                 *category_filters_datapool,
                 *user_filters_datapool
             )
-        )
-        training_result = await db.execute(training_query)
-        training_count = training_result.scalar() or 0
+        ).group_by(SyntheticData.category_l1)
         
-        # 3. 查询评测池数量（按创建时间）
-        evaluation_query = select(func.count()).select_from(DataPool).where(
+        training_result = await db.execute(training_by_category_query)
+        training_by_category = {row[0]: row[1] for row in training_result.fetchall() if row[0]}
+        
+        # 按一级类目分组查询评测池数量
+        evaluation_by_category_query = select(
+            SyntheticData.category_l1,
+            func.count()
+        ).select_from(DataPool).join(
+            SyntheticData, DataPool.source_id == SyntheticData.synthetic_id
+        ).where(
             and_(
                 DataPool.pool_type == "evaluation",
                 DataPool.created_at >= day_start,
@@ -209,20 +225,26 @@ async def get_trend(
                 *category_filters_datapool,
                 *user_filters_datapool
             )
-        )
-        evaluation_result = await db.execute(evaluation_query)
-        evaluation_count = evaluation_result.scalar() or 0
+        ).group_by(SyntheticData.category_l1)
+        
+        evaluation_result = await db.execute(evaluation_by_category_query)
+        evaluation_by_category = {row[0]: row[1] for row in evaluation_result.fetchall() if row[0]}
+        
+        # 合并各一级类目的数量
+        category_counts = {}
+        for cat in set(draft_by_category.keys()) | set(training_by_category.keys()) | set(evaluation_by_category.keys()):
+            count = draft_by_category.get(cat, 0) + training_by_category.get(cat, 0) + evaluation_by_category.get(cat, 0)
+            category_counts[cat] = count
+            all_categories.add(cat)
         
         # 总数据量
-        total_count = draft_count + training_count + evaluation_count
+        total_count = sum(category_counts.values())
         
         trend_data.append(
             TrendDataPoint(
                 date=d.strftime("%Y-%m-%d"),
                 total=total_count,
-                draft=draft_count,
-                training=training_count,
-                evaluation=evaluation_count,
+                category_counts=category_counts,
             )
         )
     
@@ -266,5 +288,6 @@ async def get_trend(
                 "training_current": current_training,
                 "evaluation_current": current_evaluation,
             },
+            categories=sorted(list(all_categories)),
         )
     )

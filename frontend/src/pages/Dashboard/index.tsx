@@ -29,7 +29,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import type { DefaultOptionType } from 'antd/es/cascader'
 import axios from '../../utils/request'
-import { Line } from '@ant-design/plots'
+import ReactECharts from 'echarts-for-react'
 import dayjs from 'dayjs'
 
 const { Text } = Typography
@@ -63,13 +63,18 @@ interface Category {
   stats?: CategoryStats
 }
 
-// 趋势数据点
+// 趋势数据点（双轴组合图）
 interface TrendDataPoint {
   date: string
-  total: number
-  draft: number
-  training: number
-  evaluation: number
+  total: number  // 折线图：总数据量
+  category_counts: Record<string, number>  // 柱状图：各一级类目数据量
+}
+
+// 趋势响应
+interface TrendResponse {
+  trend: TrendDataPoint[]
+  summary: Record<string, number>
+  categories: string[]  // 一级类目列表
 }
 
 // 仪表盘数据接口
@@ -180,52 +185,83 @@ const DistributionBar = ({ stats }: { stats?: CategoryStats }) => {
   )
 }
 
-// 趋势图表组件
+// 趋势图表组件 - 使用 ECharts 双轴组合图
 const TrendChart = ({
   data,
+  categories,
   loading,
 }: {
   data: TrendDataPoint[]
+  categories: string[]
   loading: boolean
 }) => {
-  const config = useMemo(() => {
-    return {
-      data: data.flatMap((item) => [
-        { date: item.date, value: item.total, type: '总数据量' },
-        { date: item.date, value: item.draft, type: '初创池(草稿)' },
-        { date: item.date, value: item.training, type: '训练池' },
-        { date: item.date, value: item.evaluation, type: '评测池' },
-      ]),
-      xField: 'date',
-      yField: 'value',
-      seriesField: 'type',
-      smooth: true,
-      animation: {
-        appear: {
-          animation: 'path-in',
-          duration: 1000,
-        },
-      },
-      color: ['#1890ff', '#fa8c16', '#52c41a', '#13c2c2'],
-      xAxis: {
-        title: { text: '日期' },
-      },
-      yAxis: {
-        title: { text: '数据量' },
-        minInterval: 1,
+  const option = useMemo(() => {
+    const dates = data.map((item) => item.date)
+    
+    // 为每个一级类目准备堆叠柱状图数据
+    const categoryColors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96']
+    
+    const barSeries = categories.map((cat, index) => ({
+      name: cat,
+      type: 'bar',
+      stack: 'total',
+      data: data.map((item) => item.category_counts?.[cat] || 0),
+      itemStyle: { color: categoryColors[index % categoryColors.length] },
+      emphasis: { focus: 'series' },
+    }))
+
+    const option = {
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross' },
       },
       legend: {
-        position: 'top-right',
+        data: [...categories, '总数据量'],
+        top: 10,
       },
-      tooltip: {
-        showMarkers: true,
-        shared: true,
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true,
       },
-      areaStyle: {
-        fillOpacity: 0.15,
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisPointer: { type: 'shadow' },
       },
+      yAxis: [
+        {
+          type: 'value',
+          name: '类目数据量',
+          position: 'left',
+          minInterval: 1,
+        },
+        {
+          type: 'value',
+          name: '总数据量',
+          position: 'right',
+          minInterval: 1,
+        },
+      ],
+      series: [
+        ...barSeries,
+        {
+          name: '总数据量',
+          type: 'line',
+          yAxisIndex: 1,
+          smooth: true,
+          data: data.map((item) => item.total),
+          itemStyle: { color: '#ff7875' },
+          lineStyle: { width: 3 },
+          symbol: 'circle',
+          symbolSize: 8,
+        },
+      ],
     }
-  }, [data])
+
+    return option
+  }, [data, categories])
 
   if (loading) {
     return (
@@ -235,7 +271,7 @@ const TrendChart = ({
     )
   }
 
-  if (data.length === 0) {
+  if (data.length === 0 || categories.length === 0) {
     return (
       <div style={{ height: 350, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
         暂无数据
@@ -245,7 +281,7 @@ const TrendChart = ({
 
   return (
     <div style={{ height: 350 }}>
-      <Line {...config} />
+      <ReactECharts option={option} style={{ height: '100%', width: '100%' }} />
     </div>
   )
 }
@@ -255,6 +291,7 @@ function Dashboard() {
   const [trendLoading, setTrendLoading] = useState(false)
   const [data, setData] = useState<DashboardData | null>(null)
   const [trendData, setTrendData] = useState<TrendDataPoint[]>([])
+  const [trendCategories, setTrendCategories] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   
   // 筛选器状态
@@ -381,12 +418,13 @@ function Dashboard() {
         params.append('category_l4', selectedCategory[3])
       }
 
-      const data = await axios.get<ApiResponse<{ trend: TrendDataPoint[] }>>(
+      const data = await axios.get<ApiResponse<TrendResponse>>(
         `${API_PREFIX}/dashboard/trend?${params.toString()}`
       ) as any
 
       if (data.code === 0) {
         setTrendData(data.data.trend)
+        setTrendCategories(data.data.categories || [])
       }
     } catch (err) {
       console.error('Fetch trend error:', err)
@@ -625,7 +663,7 @@ function Dashboard() {
                 </Space>
               }
             >
-              <TrendChart data={trendData} loading={trendLoading} />
+              <TrendChart data={trendData} categories={trendCategories} loading={trendLoading} />
               <div style={{ marginTop: 16, padding: '12px 16px', background: '#f6ffed', borderRadius: 6 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   <strong>数据关系说明：</strong>
