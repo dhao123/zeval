@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { 
   Card, 
   Table, 
@@ -326,6 +326,42 @@ function DraftPool() {
       fetchBatchCases(selectedBatch.batch_id, batchCasesPagination.current, batchCasesPagination.pageSize)
     }
   }, [currentView, selectedBatch, batchCasesPagination.current, batchCasesPagination.pageSize])
+
+  // 日增量趋势图表配置
+  const lineConfig = useMemo(() => ({
+    data: dailyData,
+    xField: 'date',
+    yField: 'count',
+    smooth: true,
+    color: '#fa8c16',
+    xAxis: {
+      title: { text: '日期' },
+    },
+    yAxis: {
+      title: { text: '数据量' },
+      minInterval: 1,
+    },
+    meta: {
+      date: { alias: '日期' },
+      count: { alias: '数据量' },
+    },
+    areaStyle: {
+      fill: 'l(270) 0:#ffffff 0.5:#ffd8bf 1:#fa8c16',
+      opacity: 0.3,
+    },
+    point: {
+      size: 4,
+      shape: 'circle',
+      style: {
+        fill: '#fa8c16',
+        stroke: '#fff',
+        lineWidth: 2,
+      },
+    },
+    tooltip: {
+      showMarkers: true,
+    },
+  }), [dailyData])
 
   // 可展开的行内容 - 展示完整信息
   const expandedRowRender = (record: SyntheticData) => {
@@ -888,19 +924,9 @@ function DraftPool() {
             bodyStyle={{ padding: '8px 12px', height: 'calc(100% - 48px)' }}
           >
             {dailyData.length > 0 && dailyData.some(d => d.count > 0) ? (
-              <Line 
-                data={dailyData}
-                xField="date"
-                yField="count"
-                smooth={true}
-                color="#fa8c16"
-                xAxis={{ title: { text: '日期' } }}
-                yAxis={{ title: { text: '数据量' }, minInterval: 1 }}
-                meta={{ date: { alias: '日期' }, count: { alias: '数据量' } }}
-                areaStyle={{ fill: 'l(270) 0:#ffffff 0.5:#ffd8bf 1:#fa8c16', opacity: 0.3 }}
-                point={{ size: 4, shape: 'circle', style: { fill: '#fa8c16', stroke: '#fff', lineWidth: 2 } }}
-                tooltip={{ showMarkers: true }}
-              />
+              <div style={{ height: '100%' }}>
+                <Line {...lineConfig} />
+              </div>
             ) : (
               <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
                 暂无数据
