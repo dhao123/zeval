@@ -77,18 +77,10 @@ class SyntheticService(BaseService[SyntheticData]):
     @staticmethod
     def parse_excel_smart(df: pd.DataFrame) -> List[dict]:
         """
-        智能解析Excel数据，支持多种格式：
-        
-        格式1 (标准格式):
-        | input | gt | category_l1 | category_l2 | category_l3 | category_l4 | ... |
-        
-        格式2 (简写格式 - 推荐):
-        | 物料描述 | 材质 | 规格 | 压力等级 | 用途 | 一级类目 | 二级类目 | 三级类目 | 四级类目 |
-        第一列作为input，其余列（除类目列外）合并为gt
-        
-        格式3 (单列表):
-        | input |
-        只有input列，gt为空对象
+        解析Excel数据：
+        1. 第一列作为input
+        2. 其余所有列进入gt，保持原始列名和顺序
+        3. 列名映射："标注xxx" -> "xxx"（去掉"标注"前缀）
         """
         results = []
         columns = list(df.columns)
@@ -98,132 +90,86 @@ class SyntheticService(BaseService[SyntheticData]):
         df.rename(columns=column_map, inplace=True)
         columns = list(df.columns)
         
-        # 检测格式
-        has_input_col = "input" in columns
-        has_gt_col = "gt" in columns
+        if len(columns) == 0:
+            raise ValueError("Excel file has no columns")
         
-        # 检测四级类目列（支持多种命名方式）
-        category_cols = {
-            "l1": None,
-            "l2": None,
-            "l3": None,
-            "l4": None,
-        }
+        # 列名映射函数：去掉"标注"前缀
+        def map_column_name(col: str) -> str:
+            if col.startswith("标注"):
+                return col[2:]  # 去掉"标注"两个字
+            return col
+        
+        # 检测四级类目列（用于单独存储到category_l1~l4字段）
+        category_cols = {"l1": None, "l2": None, "l3": None, "l4": None}
         for col in columns:
-            col_lower = col.lower()
-            if col_lower in ["category_l1", "一级类目", "一级", "类目1", "cat1", "l1"]:
+            mapped = map_column_name(col)
+            col_lower = mapped.lower()
+            if col_lower in ["一级类目", "一级", "类目1", "cat1", "l1"]:
                 category_cols["l1"] = col
-            elif col_lower in ["category_l2", "二级类目", "二级", "类目2", "cat2", "l2"]:
+            elif col_lower in ["二级类目", "二级", "类目2", "cat2", "l2"]:
                 category_cols["l2"] = col
-            elif col_lower in ["category_l3", "三级类目", "三级", "类目3", "cat3", "l3"]:
+            elif col_lower in ["三级类目", "三级", "类目3", "cat3", "l3"]:
                 category_cols["l3"] = col
-            elif col_lower in ["category_l4", "四级类目", "四级", "类目4", "cat4", "l4", "category"]:
+            elif col_lower in ["四级类目", "四级", "类目4", "cat4", "l4", "category"]:
                 category_cols["l4"] = col
         
-        # 元数据列集合（需要跳过的列）
-        metadata_cols = set()
+        # 元数据列（用于提取内部字段，但这些列也会进入gt）
+        difficulty_col = None
+        path_col = None
         for col in columns:
-            col_lower = col.lower()
-            if any(x in col_lower for x in ["category", "类目", "cat", "l1", "l2", "l3", "l4", "difficulty", "难度", "path", "路径"]):
-                metadata_cols.add(col)
+            mapped = map_column_name(col)
+            col_lower = mapped.lower()
+            if col_lower in ["difficulty", "难度"]:
+                difficulty_col = col
+            if col_lower in ["category_path", "类目路径"]:
+                path_col = col
         
         for idx, row in df.iterrows():
             try:
-                # 初始化数据
-                input_text = None
-                gt = {}
-                category_l1 = None
-                category_l2 = None
-                category_l3 = None
-                category_l4 = None
-                category_path = None
-                difficulty = "medium"
-                
-                # 情况1: 有标准input列
-                if has_input_col:
-                    input_text = str(row.get("input")) if pd.notna(row.get("input")) else None
-                    
-                    # 处理gt列
-                    if has_gt_col and pd.notna(row.get("gt")):
-                        gt_value = row.get("gt")
-                        if isinstance(gt_value, str):
-                            try:
-                                gt = json.loads(gt_value)
-                            except json.JSONDecodeError:
-                                gt = {"value": gt_value}
-                        elif isinstance(gt_value, dict):
-                            gt = gt_value
-                    
-                    # 获取四级类目
-                    if category_cols["l1"] and pd.notna(row.get(category_cols["l1"])):
-                        category_l1 = str(row.get(category_cols["l1"]))
-                    if category_cols["l2"] and pd.notna(row.get(category_cols["l2"])):
-                        category_l2 = str(row.get(category_cols["l2"]))
-                    if category_cols["l3"] and pd.notna(row.get(category_cols["l3"])):
-                        category_l3 = str(row.get(category_cols["l3"]))
-                    if category_cols["l4"] and pd.notna(row.get(category_cols["l4"])):
-                        category_l4 = str(row.get(category_cols["l4"]))
-                    
-                    if "category_path" in columns and pd.notna(row.get("category_path")):
-                        category_path = str(row.get("category_path"))
-                    if "difficulty" in columns and pd.notna(row.get("difficulty")):
-                        difficulty = str(row.get("difficulty"))
-                
-                # 情况2: 没有input列，使用第一列作为input
-                else:
-                    if len(columns) == 0:
-                        raise ValueError("Excel file has no columns")
-                    
-                    # 第一列作为input
-                    first_col = columns[0]
-                    input_text = str(row.get(first_col)) if pd.notna(row.get(first_col)) else None
-                    
-                    # 其余列合并为gt（跳过元数据列）
-                    other_cols = columns[1:]
-                    gt = {}
-                    for col in other_cols:
-                        if col in metadata_cols:
-                            continue
-                        
-                        value = row.get(col)
-                        if pd.notna(value):
-                            gt[col] = str(value)
-                    
-                    # 从元数据列获取四级类目
-                    if category_cols["l1"] and pd.notna(row.get(category_cols["l1"])):
-                        category_l1 = str(row.get(category_cols["l1"]))
-                    if category_cols["l2"] and pd.notna(row.get(category_cols["l2"])):
-                        category_l2 = str(row.get(category_cols["l2"]))
-                    if category_cols["l3"] and pd.notna(row.get(category_cols["l3"])):
-                        category_l3 = str(row.get(category_cols["l3"]))
-                    if category_cols["l4"] and pd.notna(row.get(category_cols["l4"])):
-                        category_l4 = str(row.get(category_cols["l4"]))
-                    
-                    if "category_path" in columns and pd.notna(row.get("category_path")):
-                        category_path = str(row.get("category_path"))
-                    if "difficulty" in columns and pd.notna(row.get("difficulty")):
-                        difficulty = str(row.get("difficulty"))
+                # 第一列作为input
+                first_col = columns[0]
+                input_text = str(row.get(first_col)) if pd.notna(row.get(first_col)) else None
                 
                 # 验证input
                 if not input_text or input_text.strip() == "" or input_text.lower() == "nan":
-                    results.append({
-                        "row": idx + 1,
-                        "status": "failed",
-                        "reason": "Input is empty",
-                    })
+                    results.append({"row": idx + 1, "status": "failed", "reason": "Input is empty"})
                     continue
                 
-                # 如果没有指定四级类目，尝试从input推断（仅作为category_l4）
+                # 其余列进入gt，列名映射去掉"标注"前缀
+                gt = {}
+                category_l1 = category_l2 = category_l3 = category_l4 = None
+                category_path = None
+                difficulty = "medium"
+                
+                for col in columns[1:]:
+                    value = row.get(col)
+                    if pd.notna(value):
+                        # 列名映射：去掉"标注"前缀
+                        display_col = map_column_name(col)
+                        gt[display_col] = str(value)
+                        
+                        # 同时提取四级类目用于内部存储
+                        if col == category_cols["l1"]:
+                            category_l1 = str(value)
+                        elif col == category_cols["l2"]:
+                            category_l2 = str(value)
+                        elif col == category_cols["l3"]:
+                            category_l3 = str(value)
+                        elif col == category_cols["l4"]:
+                            category_l4 = str(value)
+                        elif col == path_col:
+                            category_path = str(value)
+                        elif col == difficulty_col:
+                            difficulty = str(value)
+                
+                # 如果没有指定四级类目，尝试从input推断
                 if not category_l1 and not category_l2 and not category_l3 and not category_l4:
                     category_l4 = SyntheticService.infer_category_from_input(input_text)
                 
                 # 如果没有category_path，根据四级类目自动生成
                 if not category_path:
                     path_parts = [p for p in [category_l1, category_l2, category_l3, category_l4] if p]
-                    if path_parts:
-                        category_path = "/".join(path_parts)
-                    else:
-                        category_path = f"建材/{category_l4 or '其他'}"
+                    category_path = "/".join(path_parts) if path_parts else f"建材/{category_l4 or '其他'}"
                 
                 results.append({
                     "row": idx + 1,
@@ -241,11 +187,7 @@ class SyntheticService(BaseService[SyntheticData]):
                 })
                 
             except Exception as e:
-                results.append({
-                    "row": idx + 1,
-                    "status": "failed",
-                    "reason": str(e),
-                })
+                results.append({"row": idx + 1, "status": "failed", "reason": str(e)})
         
         return results
     
@@ -358,18 +300,30 @@ class SyntheticService(BaseService[SyntheticData]):
         result = await self.db.execute(query)
         items = result.scalars().all()
         
-        # 查询每条记录的池位置信息
+        # 查询每条记录的池位置信息和owner_name
         pool_map = {}
+        owner_map = {}
         if items:
             synthetic_ids = [item.synthetic_id for item in items]
+            batch_ids = [item.upload_batch_id for item in items if item.upload_batch_id]
+            
+            # 查询池位置
             pool_query = select(DataPool).where(DataPool.source_id.in_(synthetic_ids))
             pool_result = await self.db.execute(pool_query)
             pool_records = pool_result.scalars().all()
             pool_map = {p.source_id: p.pool_type for p in pool_records}
+            
+            # 查询owner_name
+            if batch_ids:
+                from app.models.upload_batch import UploadBatch
+                owner_query = select(UploadBatch.batch_id, UploadBatch.owner_name).where(UploadBatch.batch_id.in_(batch_ids))
+                owner_result = await self.db.execute(owner_query)
+                owner_records = owner_result.all()
+                owner_map = {r.batch_id: r.owner_name for r in owner_records}
         
         pages = (total + size - 1) // size
         
-        # 转换为字典列表并添加 pool_location
+        # 转换为字典列表并添加 pool_location 和 owner_name
         items_with_pool = []
         for item in items:
             item_dict = {
@@ -399,6 +353,7 @@ class SyntheticService(BaseService[SyntheticData]):
                 "created_at": item.created_at,
                 "updated_at": item.updated_at,
                 "pool_location": pool_map.get(item.synthetic_id),
+                "owner_name": owner_map.get(item.upload_batch_id) if item.upload_batch_id else None,
             }
             items_with_pool.append(item_dict)
         
@@ -644,10 +599,14 @@ class SyntheticService(BaseService[SyntheticData]):
                         source="upload",
                     )
                 
+                # gt 已经包含除input外的所有列（保持原始列名和顺序）
+                # 额外添加内部使用的category字段（如果gt中不存在）
+                gt_data = data["gt"].copy()
+                
                 # Create synthetic data with upload_batch_id
                 synthetic_data = SyntheticCreate(
                     input=data["input"],
-                    gt=data["gt"],
+                    gt=gt_data,
                     category_l1=data.get("category_l1"),
                     category_l2=data.get("category_l2"),
                     category_l3=data.get("category_l3"),

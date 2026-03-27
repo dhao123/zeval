@@ -157,10 +157,21 @@ class UploadBatchService:
         return batch
     
     async def delete_batch(self, batch_id: str) -> bool:
-        """删除批次"""
+        """删除批次及其关联数据"""
         batch = await self.get_batch_by_id(batch_id)
         if not batch:
             return False
+        
+        # 先删除关联的 synthetic_data 数据
+        try:
+            from sqlalchemy import delete
+            stmt = delete(SyntheticData).where(SyntheticData.upload_batch_id == batch_id)
+            result = await self.db.execute(stmt)
+            deleted_count = result.rowcount
+            logger.info(f"Deleted {deleted_count} synthetic data records for batch: {batch_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete synthetic data for batch {batch_id}: {e}")
+            raise
         
         # 删除OSS文件
         try:
@@ -170,7 +181,7 @@ class UploadBatchService:
         except Exception as e:
             logger.warning(f"Failed to delete OSS file: {e}")
         
-        # 删除数据库记录
+        # 删除批次记录
         await self.db.delete(batch)
         await self.db.commit()
         

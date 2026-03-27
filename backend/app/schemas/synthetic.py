@@ -66,6 +66,9 @@ class SyntheticRead(SyntheticBase):
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
     
+    # 数据Owner（关联upload_batches获取）
+    owner_name: Optional[str] = Field(default=None, description="数据Owner名称")
+    
     class Config:
         from_attributes = True
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { 
   Card, 
   Table, 
@@ -18,7 +18,8 @@ import {
   Row,
   Col,
   Typography,
-  Divider
+  Divider,
+  Statistic
 } from 'antd'
 import { 
   CheckOutlined, 
@@ -34,10 +35,14 @@ import {
   CompressOutlined,
   ExclamationCircleOutlined,
   ArrowLeftOutlined,
-  UserOutlined
+  UserOutlined,
+  DatabaseOutlined,
+  RiseOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
+import { Line } from '@ant-design/plots'
+import dayjs from 'dayjs'
 import { formatBeijingTime } from '@/utils/date'
 import UploadBatchList, { UploadBatchListRef } from '@/components/UploadBatchList'
 
@@ -262,6 +267,11 @@ function DraftPool() {
     total: 0,
   })
   
+  // 统计数据
+  const [draftStats, setDraftStats] = useState({ total: 0 })
+  const [timeRange, setTimeRange] = useState(7)
+  const [dailyData, setDailyData] = useState<{date: string, count: number}[]>([])
+  
   const [filters, setFilters] = useState({
     keyword: '',
     category_l4: undefined as string | undefined,
@@ -279,6 +289,36 @@ function DraftPool() {
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false)
   
   const [form] = Form.useForm()
+
+  // 获取初创池统计数据（数据量 + 日增量趋势）
+  const fetchDraftStats = useCallback(async () => {
+    try {
+      // 1. 从 dashboard/overview 获取初创池数据量
+      const overviewRes = await axios.get(`${API_BASE_URL}/dashboard/overview`)
+      if (overviewRes.data.code === 0) {
+        setDraftStats({ total: overviewRes.data.data?.total_draft || 0 })
+      }
+      
+      // 2. 从 dashboard/trend 获取日增量趋势数据
+      const trendRes = await axios.get(`${API_BASE_URL}/dashboard/trend?days=${timeRange}`)
+      if (trendRes.data.code === 0) {
+        const trend = trendRes.data.data?.trend || []
+        // 转换为图表需要的格式
+        const formattedTrend = trend.map((item: any) => ({
+          date: dayjs(item.date).format('MM-DD'),
+          count: item.total || 0,
+        }))
+        setDailyData(formattedTrend)
+      }
+    } catch (error) {
+      console.error('Failed to fetch draft stats:', error)
+    }
+  }, [timeRange])
+
+  // 初始加载统计数据
+  useEffect(() => {
+    fetchDraftStats()
+  }, [fetchDraftStats])
 
   // 刷新数据（用于操作后更新视图）
   const refreshData = useCallback(() => {
@@ -701,6 +741,8 @@ function DraftPool() {
         )
         // 刷新上传任务列表
         uploadBatchListRef.current?.refresh()
+        // 刷新统计数据（数据量 + 日增量趋势）
+        fetchDraftStats()
         // 如果在批次详情视图，也刷新当前数据
         refreshData()
       } else {
@@ -808,7 +850,67 @@ function DraftPool() {
         style={{ marginBottom: 16 }}
       />
 
-{/* 上传任务列表（包含批量上传按钮） */}
+      {/* 统计卡片 */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={6}>
+          <Card style={{ height: 180 }}>
+            <Statistic
+              title="初创池数据量（草稿态）"
+              value={draftStats.total}
+              prefix={<DatabaseOutlined />}
+              valueStyle={{ color: '#fa8c16' }}
+            />
+          </Card>
+        </Col>
+        <Col span={18}>
+          <Card 
+            style={{ height: 180 }}
+            title={
+              <Space>
+                <RiseOutlined style={{ color: '#fa8c16' }} />
+                <span>日增量趋势</span>
+                <Select
+                  value={timeRange}
+                  onChange={(value) => {
+                    setTimeRange(value)
+                    fetchDraftStats()
+                  }}
+                  options={[
+                    { label: '最近7天', value: 7 },
+                    { label: '最近14天', value: 14 },
+                    { label: '最近30天', value: 30 },
+                  ]}
+                  size="small"
+                  style={{ width: 100 }}
+                />
+              </Space>
+            }
+            bodyStyle={{ padding: '8px 12px', height: 'calc(100% - 48px)' }}
+          >
+            {dailyData.length > 0 && dailyData.some(d => d.count > 0) ? (
+              <Line 
+                data={dailyData}
+                xField="date"
+                yField="count"
+                smooth={true}
+                color="#fa8c16"
+                xAxis={{ title: { text: '日期' } }}
+                yAxis={{ title: { text: '数据量' }, minInterval: 1 }}
+                meta={{ date: { alias: '日期' }, count: { alias: '数据量' } }}
+                areaStyle={{ fill: 'l(270) 0:#ffffff 0.5:#ffd8bf 1:#fa8c16', opacity: 0.3 }}
+                point={{ size: 4, shape: 'circle', style: { fill: '#fa8c16', stroke: '#fff', lineWidth: 2 } }}
+                tooltip={{ showMarkers: true }}
+              />
+            ) : (
+              <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
+                暂无数据
+              </div>
+            )}
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 上传任务列表（包含批量上传按钮） */}
       <UploadBatchList 
         ref={uploadBatchListRef}
         onViewDetail={handleViewBatchDetail}
