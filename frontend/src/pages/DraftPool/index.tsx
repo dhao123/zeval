@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { 
   Card, 
   Table, 
@@ -33,12 +33,13 @@ import {
   FullscreenOutlined,
   CompressOutlined,
   ExclamationCircleOutlined,
-  ArrowLeftOutlined
+  ArrowLeftOutlined,
+  UserOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
 import { formatBeijingTime } from '@/utils/date'
-import UploadBatchList from '@/components/UploadBatchList'
+import UploadBatchList, { UploadBatchListRef } from '@/components/UploadBatchList'
 
 const { Text, Paragraph } = Typography
 
@@ -80,6 +81,7 @@ interface SyntheticData {
   version: string
   hash: string
   created_by?: number
+  owner_name?: string  // 数据Owner名称
   confirmed_by?: number
   confirmed_at?: string
   created_at: string
@@ -249,6 +251,9 @@ function DraftPool() {
   // 批次详情状态
   const [currentView, setCurrentView] = useState<'main' | 'batchDetail'>('main')
   const [selectedBatch, setSelectedBatch] = useState<any>(null)
+  
+  // 上传任务列表 ref，用于上传成功后刷新
+  const uploadBatchListRef = useRef<UploadBatchListRef>(null)
   const [batchCases, setBatchCases] = useState<SyntheticData[]>([])
   const [batchCasesLoading, setBatchCasesLoading] = useState(false)
   const [batchCasesPagination, setBatchCasesPagination] = useState({
@@ -395,7 +400,18 @@ function DraftPool() {
         />
       ),
     },
-
+    {
+      title: '数据Owner',
+      dataIndex: 'owner_name',
+      key: 'owner_name',
+      width: 100,
+      render: (text: string) => (
+        <Space>
+          <UserOutlined style={{ color: '#8c8c8c' }} />
+          <Text>{text || '未知'}</Text>
+        </Space>
+      ),
+    },
     {
       title: '状态',
       dataIndex: 'status',
@@ -683,6 +699,9 @@ function DraftPool() {
         message.success(
           `上传成功：${result.success}条成功，${result.duplicated}条重复，${result.failed}条失败`
         )
+        // 刷新上传任务列表
+        uploadBatchListRef.current?.refresh()
+        // 如果在批次详情视图，也刷新当前数据
         refreshData()
       } else {
         message.error(response.data.message || '上传失败')
@@ -791,6 +810,7 @@ function DraftPool() {
 
 {/* 上传任务列表（包含批量上传按钮） */}
       <UploadBatchList 
+        ref={uploadBatchListRef}
         onViewDetail={handleViewBatchDetail}
         uploadButton={
           <Upload

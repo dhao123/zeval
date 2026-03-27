@@ -211,8 +211,13 @@ async def delete_upload_batch(
         )
     
     # 权限检查（只有Owner或管理员可以删除）
-    # TODO: 管理员判断
-    if batch.owner_id != current_user.get("id"):
+    user_id = str(current_user.get("id", ""))
+    batch_owner_id = str(batch.owner_id) if batch.owner_id else ""
+    is_admin = current_user.get("is_admin", False)
+    
+    # 管理员可以删除任何批次，普通用户只能删除自己的
+    if not is_admin and batch_owner_id != user_id:
+        logger.warning(f"Permission denied: user {user_id} (admin={is_admin}) tried to delete batch {batch_id} owned by {batch_owner_id}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="无权删除此批次"

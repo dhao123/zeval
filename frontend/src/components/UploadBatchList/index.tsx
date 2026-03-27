@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
 import {
   Table,
   Button,
@@ -49,7 +49,12 @@ interface UploadBatchListProps {
   uploadButton?: React.ReactNode
 }
 
-export function UploadBatchList({ onViewDetail, uploadButton }: UploadBatchListProps) {
+export interface UploadBatchListRef {
+  refresh: () => void
+}
+
+export const UploadBatchList = forwardRef<UploadBatchListRef, UploadBatchListProps>(
+  function UploadBatchList({ onViewDetail, uploadButton }, ref) {
   const [loading, setLoading] = useState(false)
   const [batches, setBatches] = useState<UploadBatch[]>([])
   const [pagination, setPagination] = useState({
@@ -89,6 +94,10 @@ export function UploadBatchList({ onViewDetail, uploadButton }: UploadBatchListP
       setLoading(false)
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    refresh: () => fetchBatches(pagination.current, pagination.pageSize)
+  }))
 
   useEffect(() => {
     fetchBatches()
@@ -299,6 +308,6 @@ export function UploadBatchList({ onViewDetail, uploadButton }: UploadBatchListP
       )}
     </Card>
   )
-}
+})
 
 export default UploadBatchList
