@@ -8,7 +8,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user, get_db, require_admin, require_data_engineer
+from app.api.deps import (
+    get_current_active_user, 
+    get_current_user_optional,
+    get_db, 
+    require_admin, 
+    require_data_engineer
+)
 from app.core.logging import get_logger
 from app.schemas.common import PaginatedResponse, PaginationParams, ResponseModel
 from app.schemas.synthetic import (
@@ -397,9 +403,10 @@ async def get_route_batch(
 async def test_upload_synthetics(
     file: UploadFile = File(..., description="Excel或CSV文件"),
     db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user_optional),
 ):
     """
-    【测试用】批量上传合成数据（无需认证）。
+    【测试用】批量上传合成数据。
     
     支持Excel (.xlsx, .xls) 或 CSV 格式。
     必填字段：input, gt, category_l4
@@ -422,13 +429,31 @@ async def test_upload_synthetics(
             detail="Only Excel (.xlsx, .xls) or CSV files are supported",
         )
     
+    # 从SSO用户信息中获取用户ID和显示名称（如果已登录）
+    owner_id = None
+    owner_name = None
+    created_by = 1  # 默认测试用户ID
+    
+    if current_user:
+        created_by = current_user.get('id') or 1
+        owner_id = str(current_user.get('id', '')) if current_user.get('id') else None
+        owner_name = (
+            current_user.get('nickname') or
+            current_user.get('name') or 
+            current_user.get('realName') or 
+            current_user.get('displayName') or 
+            current_user.get('username')
+        )
+    
     result = await service.upload_from_excel(
         file=file.file,
         filename=file.filename,
-        created_by=1,  # 测试用户ID
+        created_by=created_by,
+        owner_id=owner_id,
+        owner_name=owner_name,
     )
     
-    logger.info(f"[TEST] Synthetic upload: {result.success} created, {result.duplicated} duplicated")
+    logger.info(f"[TEST] Synthetic upload: {result.success} created, {result.duplicated} duplicated, owner: {owner_name}")
     
     return ResponseModel(code=0, message="success", data=result)
 
