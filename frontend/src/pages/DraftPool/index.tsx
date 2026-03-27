@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import { 
   Card, 
   Table, 
@@ -18,9 +18,7 @@ import {
   Row,
   Col,
   Typography,
-  Divider,
-  AutoComplete,
-  Statistic
+  Divider
 } from 'antd'
 import { 
   CheckOutlined, 
@@ -35,14 +33,12 @@ import {
   FullscreenOutlined,
   CompressOutlined,
   ExclamationCircleOutlined,
-  DatabaseOutlined,
-  RiseOutlined
+  ArrowLeftOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
-import { Line } from '@ant-design/plots'
-import dayjs from 'dayjs'
 import { formatBeijingTime } from '@/utils/date'
+import UploadBatchList from '@/components/UploadBatchList'
 
 const { Text, Paragraph } = Typography
 
@@ -101,32 +97,6 @@ interface ApiResponse<T> {
     pages: number
   }
 }
-
-// 计算日增量数据
-const calculateDailyIncrement = (data: SyntheticData[], days: number = 7) => {
-  const endDate = dayjs()
-  const startDate = endDate.subtract(days - 1, 'day')
-  
-  const dateMap: Record<string, number> = {}
-  for (let i = 0; i < days; i++) {
-    const date = startDate.add(i, 'day').format('YYYY-MM-DD')
-    dateMap[date] = 0
-  }
-  
-  data.forEach(item => {
-    const date = dayjs(item.created_at).format('YYYY-MM-DD')
-    if (dateMap.hasOwnProperty(date)) {
-      dateMap[date]++
-    }
-  })
-  
-  return Object.entries(dateMap).map(([date, count]) => ({
-    date: dayjs(date).format('MM-DD'),
-    fullDate: date,
-    count,
-  }))
-}
-
 // 所在池映射 - 根据状态和分流情况判断
 // 所在池映射 - 优先使用后端返回的 pool_location
 const getPoolLocation = (record: SyntheticData): { label: string; color: string } => {
@@ -272,12 +242,16 @@ const CategoryDisplay = ({
 }
 
 function DraftPool() {
-  const [loading, setLoading] = useState(false)
-  const [data, setData] = useState<SyntheticData[]>([])
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([])
   const [showFullContent, setShowFullContent] = useState(false)
-  const [pagination, setPagination] = useState({
+  
+  // 批次详情状态
+  const [currentView, setCurrentView] = useState<'main' | 'batchDetail'>('main')
+  const [selectedBatch, setSelectedBatch] = useState<any>(null)
+  const [batchCases, setBatchCases] = useState<SyntheticData[]>([])
+  const [batchCasesLoading, setBatchCasesLoading] = useState(false)
+  const [batchCasesPagination, setBatchCasesPagination] = useState({
     current: 1,
     pageSize: 10,
     total: 0,
@@ -289,35 +263,8 @@ function DraftPool() {
     status: undefined as string | undefined,
   })
   
-  // 类目选项（用于AutoComplete）
-  const [categoryOptions, setCategoryOptions] = useState<{value: string, label: string}[]>([])
-  
-  // 时间范围选择
-  const [timeRange, setTimeRange] = useState(7)
-  
-  // 获取类目选项
-  const fetchCategoryOptions = useCallback(async (keyword?: string) => {
-    try {
-      const params = new URLSearchParams()
-      if (keyword) params.append('keyword', keyword)
-      const response = await axios.get<ApiResponse<any[]>>(
-        `${API_BASE_URL}/categories/l4-options?${params.toString()}`
-      )
-      if (response.data.code === 0) {
-        setCategoryOptions(response.data.data || [])
-      }
-    } catch (error) {
-      console.error('Failed to fetch category options:', error)
-    }
-  }, [])
-  
-  // 初始加载类目选项
-  useEffect(() => {
-    fetchCategoryOptions()
-  }, [fetchCategoryOptions])
-  
   const [editModalVisible, setEditModalVisible] = useState(false)
-  const [detailModalVisible, setDetailModalVisible] = useState(false)
+
   const [confirmModalVisible, setConfirmModalVisible] = useState(false)
   const [batchDeleteModalVisible, setBatchDeleteModalVisible] = useState(false)
   const [currentRecord, setCurrentRecord] = useState<SyntheticData | null>(null)
@@ -328,84 +275,12 @@ function DraftPool() {
   
   const [form] = Form.useForm()
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.append('page', String(pagination.current))
-      params.append('size', String(pagination.pageSize))
-      
-      if (filters.category_l4) params.append('category_l4', filters.category_l4)
-      if (filters.status) params.append('status', filters.status)
-      if (filters.keyword) params.append('keyword', filters.keyword)
-
-      const response = await axios.get<ApiResponse<SyntheticData[]>>(
-        `${API_BASE_URL}${getApiPath('/draft-pool')}?${params.toString()}`
-      )
-      
-      if (response.data.code === 0) {
-        setData(response.data.data || [])
-        if (response.data.pagination) {
-          setPagination(prev => ({
-            ...prev,
-            total: response.data.pagination!.total,
-          }))
-        }
-      } else {
-        message.error(response.data.message || '获取数据失败')
-      }
-    } catch (error: any) {
-      console.error('Fetch data error:', error)
-      message.error(error.response?.data?.message || '获取数据失败，请检查网络连接')
-    } finally {
-      setLoading(false)
+  // 刷新数据（用于操作后更新视图）
+  const refreshData = useCallback(() => {
+    if (currentView === 'batchDetail' && selectedBatch) {
+      fetchBatchCases(selectedBatch.batch_id, batchCasesPagination.current, batchCasesPagination.pageSize)
     }
-  }, [pagination.current, pagination.pageSize, filters])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  // 计算日增量数据
-  const dailyData = useMemo(() => {
-    return calculateDailyIncrement(data, timeRange)
-  }, [data, timeRange])
-
-  // 平滑折线图配置
-  const lineConfig = useMemo(() => ({
-    data: dailyData,
-    xField: 'date',
-    yField: 'count',
-    smooth: true,
-    color: '#fa8c16',
-    xAxis: {
-      title: { text: '日期' },
-    },
-    yAxis: {
-      title: { text: '数据量' },
-      minInterval: 1,
-    },
-    meta: {
-      date: { alias: '日期' },
-      count: { alias: '数据量' },
-    },
-    areaStyle: {
-      fill: 'l(270) 0:#ffffff 0.5:#ffd8bf 1:#fa8c16',
-      opacity: 0.3,
-    },
-    point: {
-      size: 4,
-      shape: 'circle',
-      style: {
-        fill: '#fa8c16',
-        stroke: '#fff',
-        lineWidth: 2,
-      },
-    },
-    tooltip: {
-      showMarkers: true,
-    },
-  }), [dailyData])
+  }, [currentView, selectedBatch, batchCasesPagination.current, batchCasesPagination.pageSize])
 
   // 可展开的行内容 - 展示完整信息
   const expandedRowRender = (record: SyntheticData) => {
@@ -604,7 +479,6 @@ function DraftPool() {
 
   const handleViewDetail = (record: SyntheticData) => {
     setCurrentRecord(record)
-    setDetailModalVisible(true)
   }
 
   const handleEdit = (record: SyntheticData) => {
@@ -643,7 +517,7 @@ function DraftPool() {
       if (response.data.code === 0) {
         message.success('保存成功')
         setEditModalVisible(false)
-        fetchData()
+        refreshData()
       } else {
         message.error(response.data.message || '保存失败')
       }
@@ -680,7 +554,7 @@ function DraftPool() {
           setConfirmModalVisible(false)
         }
         
-        fetchData()
+        refreshData()
       } else {
         message.error(response.data.message || '操作失败')
       }
@@ -710,7 +584,7 @@ function DraftPool() {
       if (response.data.code === 0) {
         message.success(`批量${action === 'confirm' ? '确认' : '拒绝'}成功`)
         setSelectedRowKeys([])
-        fetchData()
+        refreshData()
       } else {
         message.error(response.data.message || '批量操作失败')
       }
@@ -752,7 +626,7 @@ function DraftPool() {
       if (successCount > 0) {
         message.success(`成功删除 ${successCount} 条数据`)
         setSelectedRowKeys([])
-        fetchData()
+        refreshData()
       }
       if (failCount > 0) {
         message.error(`${failCount} 条数据删除失败`)
@@ -773,7 +647,7 @@ function DraftPool() {
       
       if (response.data.code === 0) {
         message.success('删除成功')
-        fetchData()
+        refreshData()
       } else {
         message.error(response.data.message || '删除失败')
       }
@@ -809,7 +683,7 @@ function DraftPool() {
         message.success(
           `上传成功：${result.success}条成功，${result.duplicated}条重复，${result.failed}条失败`
         )
-        fetchData()
+        refreshData()
       } else {
         message.error(response.data.message || '上传失败')
       }
@@ -857,6 +731,49 @@ function DraftPool() {
     }),
   }
 
+  // 获取批次下的cases
+  const fetchBatchCases = useCallback(async (batchId: string, page = 1, pageSize = 10) => {
+    setBatchCasesLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.append('page', String(page))
+      params.append('size', String(pageSize))
+      params.append('upload_batch_id', batchId)
+      
+      const response = await axios.get<ApiResponse<SyntheticData[]>>(
+        `${API_BASE_URL}${getApiPath('/draft-pool')}?${params.toString()}`
+      )
+      
+      if (response.data.code === 0) {
+        setBatchCases(response.data.data || [])
+        setBatchCasesPagination({
+          current: page,
+          pageSize: pageSize,
+          total: response.data.pagination?.total || 0,
+        })
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch batch cases:', error)
+      message.error('获取批次数据失败')
+    } finally {
+      setBatchCasesLoading(false)
+    }
+  }, [])
+
+  // 处理查看批次详情
+  const handleViewBatchDetail = (batch: any) => {
+    setSelectedBatch(batch)
+    setCurrentView('batchDetail')
+    fetchBatchCases(batch.batch_id, 1, 10)
+  }
+
+  // 返回主视图
+  const handleBackToMain = () => {
+    setCurrentView('main')
+    setSelectedBatch(null)
+    setBatchCases([])
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -872,153 +789,124 @@ function DraftPool() {
         style={{ marginBottom: 16 }}
       />
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={6}>
-          <Card style={{ height: 180 }}>
-            <Statistic
-              title="初创池数据量"
-              value={pagination.total}
-              prefix={<DatabaseOutlined />}
-              valueStyle={{ color: '#fa8c16' }}
-            />
-          </Card>
-        </Col>
-        <Col span={18}>
-          <Card 
-            style={{ height: 180 }}
-            title={
-              <Space>
-                <RiseOutlined style={{ color: '#fa8c16' }} />
-                <span>日增量趋势</span>
-                <Select
-                  value={timeRange}
-                  onChange={setTimeRange}
-                  options={[
-                    { label: '最近7天', value: 7 },
-                    { label: '最近14天', value: 14 },
-                    { label: '最近30天', value: 30 },
-                  ]}
-                  size="small"
-                  style={{ width: 100 }}
-                />
-              </Space>
-            }
-            bodyStyle={{ padding: '8px 12px', height: 'calc(100% - 48px)' }}
+{/* 上传任务列表（包含批量上传按钮） */}
+      <UploadBatchList 
+        onViewDetail={handleViewBatchDetail}
+        uploadButton={
+          <Upload
+            accept=".xlsx,.xls,.csv"
+            showUploadList={false}
+            beforeUpload={handleUpload}
           >
-            {dailyData.length > 0 && dailyData.some(d => d.count > 0) ? (
-              <div style={{ height: '100%' }}>
-                <Line {...lineConfig} />
-              </div>
-            ) : (
-              <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
-                暂无数据
-              </div>
-            )}
-          </Card>
-        </Col>
-      </Row>
+            <Button icon={<UploadOutlined />}>批量上传</Button>
+          </Upload>
+        }
+      />
 
-      <Card>
-        <div className="table-actions" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space wrap>
-            <Input.Search
-              placeholder="搜索输入文本"
-              style={{ width: 250 }}
-              value={filters.keyword}
-              onChange={(e) => setFilters(prev => ({ ...prev, keyword: e.target.value }))}
-              onSearch={fetchData}
-              allowClear
-            />
-            <AutoComplete
-              placeholder="搜索四级类目"
-              style={{ width: 320 }}
-              popupMatchSelectWidth={false}
-              dropdownStyle={{ minWidth: 400, maxWidth: 600 }}
-              value={filters.category_l4}
-              onChange={(value) => setFilters(prev => ({ ...prev, category_l4: value }))}
-              onSearch={fetchCategoryOptions}
-              options={categoryOptions}
-              allowClear
-            />
-            <Select
-              placeholder="状态"
-              style={{ width: 120 }}
-              value={filters.status}
-              onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-              allowClear
-              options={[
-                { label: '草稿', value: 'draft' },
-                { label: '已确认', value: 'confirmed' },
-                { label: '已拒绝', value: 'rejected' },
-              ]}
-            />
-            <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
-          </Space>
+      {/* 批次详情视图 */}
+      {currentView === 'batchDetail' && selectedBatch && (
+        <Card style={{ marginTop: 16 }}>
+          {/* 详情页头部 */}
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space>
+              <Button icon={<ArrowLeftOutlined />} onClick={handleBackToMain}>返回</Button>
+              <span style={{ fontSize: 16, fontWeight: 500 }}>
+                批次详情: {selectedBatch.batch_id}
+              </span>
+            </Space>
+            <Space>
+              <span>文件名: </span>
+              <a href={selectedBatch.file_url} target="_blank" rel="noopener noreferrer">
+                {selectedBatch.file_name}
+              </a>
+              <span style={{ marginLeft: 16 }}>数据Owner: {selectedBatch.owner_name || '未知'}</span>
+              <span style={{ marginLeft: 16 }}>数据量: {selectedBatch.record_count} 条</span>
+            </Space>
+          </div>
+
+          {/* 表格操作栏（与主视图一致） */}
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space wrap>
+              <Input.Search
+                placeholder="搜索输入文本"
+                style={{ width: 250 }}
+                value={filters.keyword}
+                onChange={(e) => setFilters(prev => ({ ...prev, keyword: e.target.value }))}
+                onSearch={() => fetchBatchCases(selectedBatch.batch_id, 1, batchCasesPagination.pageSize)}
+                allowClear
+              />
+              <Select
+                placeholder="状态"
+                style={{ width: 120 }}
+                value={filters.status}
+                onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+                allowClear
+                options={[
+                  { label: '草稿', value: 'draft' },
+                  { label: '已确认', value: 'confirmed' },
+                  { label: '已拒绝', value: 'rejected' },
+                ]}
+              />
+              <Button icon={<ReloadOutlined />} onClick={() => fetchBatchCases(selectedBatch.batch_id, 1, batchCasesPagination.pageSize)}>刷新</Button>
+            </Space>
+            
+            <Space wrap>
+              <Button 
+                icon={showFullContent ? <CompressOutlined /> : <FullscreenOutlined />}
+                onClick={() => setShowFullContent(!showFullContent)}
+              >
+                {showFullContent ? '紧凑视图' : '展开视图'}
+              </Button>
+              
+              <Button 
+                danger
+                disabled={selectedRowKeys.length === 0}
+                onClick={() => handleBatchDelete()}
+                icon={<DeleteOutlined />}
+              >
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+              
+              <Button icon={<DownloadOutlined />} onClick={handleExport}>
+                导出数据
+              </Button>
+              
+              <Button 
+                type="primary" 
+                disabled={selectedRowKeys.length === 0}
+                onClick={() => handleBatchConfirm('confirm')}
+                icon={<PartitionOutlined />}
+              >
+                批量分流 ({selectedRowKeys.length})
+              </Button>
+            </Space>
+          </div>
           
-          <Space wrap>
-            <Button 
-              icon={showFullContent ? <CompressOutlined /> : <FullscreenOutlined />}
-              onClick={() => setShowFullContent(!showFullContent)}
-            >
-              {showFullContent ? '紧凑视图' : '展开视图'}
-            </Button>
-            
-            <Upload
-              accept=".xlsx,.xls,.csv"
-              showUploadList={false}
-              beforeUpload={handleUpload}
-            >
-              <Button icon={<UploadOutlined />}>批量上传</Button>
-            </Upload>
-            
-            <Button 
-              danger
-              disabled={selectedRowKeys.length === 0}
-              onClick={() => handleBatchDelete()}
-              icon={<DeleteOutlined />}
-            >
-              批量删除 ({selectedRowKeys.length})
-            </Button>
-            
-            <Button icon={<DownloadOutlined />} onClick={handleExport}>
-              导出数据
-            </Button>
-            
-            <Button 
-              type="primary" 
-              disabled={selectedRowKeys.length === 0}
-              onClick={() => handleBatchConfirm('confirm')}
-              icon={<PartitionOutlined />}
-            >
-              批量分流 ({selectedRowKeys.length})
-            </Button>
-          </Space>
-        </div>
-
-        <Table
-          rowSelection={rowSelection}
-          columns={columns}
-          dataSource={data}
-          loading={loading}
-          rowKey="synthetic_id"
-          expandable={{
-            expandedRowRender,
-            expandedRowKeys,
-            onExpandedRowsChange: (keys: readonly React.Key[]) => setExpandedRowKeys([...keys]),
-          }}
-          pagination={{
-            ...pagination,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
-            onChange: (page, pageSize) => {
-              setPagination(prev => ({ ...prev, current: page, pageSize: pageSize || 10 }))
-            },
-          }}
-          scroll={{ x: 1400 }}
-          size="small"
-        />
-      </Card>
+          <Table
+            rowSelection={rowSelection}
+            columns={columns}
+            dataSource={batchCases}
+            loading={batchCasesLoading}
+            rowKey="synthetic_id"
+            expandable={{
+              expandedRowRender,
+              expandedRowKeys,
+              onExpandedRowsChange: (keys: readonly React.Key[]) => setExpandedRowKeys([...keys]),
+            }}
+            pagination={{
+              ...batchCasesPagination,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条`,
+              onChange: (page, pageSize) => {
+                fetchBatchCases(selectedBatch.batch_id, page, pageSize || 10)
+              },
+            }}
+            scroll={{ x: 1400 }}
+            size="small"
+          />
+        </Card>
+      )}
 
       {/* 编辑弹窗 */}
       <Modal
@@ -1059,65 +947,6 @@ function DraftPool() {
         </Form>
       </Modal>
 
-      {/* 详情弹窗 */}
-      <Modal
-        title="合成数据详情"
-        open={detailModalVisible}
-        onCancel={() => setDetailModalVisible(false)}
-        footer={null}
-        width={800}
-      >
-        {currentRecord && (
-          <div style={{ padding: 16 }}>
-            <Row gutter={24}>
-              <Col span={12}>
-                <div style={{ marginBottom: 24 }}>
-                  <Text strong style={{ fontSize: 16, color: '#1890ff' }}>📝 Input (输入)</Text>
-                  <div style={{ 
-                    marginTop: 12, 
-                    padding: 16, 
-                    background: '#e6f7ff', 
-                    borderRadius: 8,
-                    border: '1px solid #91d5ff'
-                  }}>
-                    <Text style={{ fontSize: 14 }}>{currentRecord.input}</Text>
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div style={{ marginBottom: 24 }}>
-                  <Text strong style={{ fontSize: 16, color: '#52c41a' }}>✓ GT (标准答案)</Text>
-                  <div style={{ marginTop: 12 }}>
-                    <GTDisplay gt={currentRecord.gt} />
-                  </div>
-                </div>
-              </Col>
-            </Row>
-            
-            <Divider />
-            
-            <Descriptions bordered column={2}>
-              <Descriptions.Item label="ID" span={2}>{currentRecord.synthetic_id}</Descriptions.Item>
-              <Descriptions.Item label="一级类目">{currentRecord.category_l1 || '-'}</Descriptions.Item>
-              <Descriptions.Item label="二级类目">{currentRecord.category_l2 || '-'}</Descriptions.Item>
-              <Descriptions.Item label="三级类目">{currentRecord.category_l3 || '-'}</Descriptions.Item>
-              <Descriptions.Item label="四级类目">{currentRecord.category_l4 || '-'}</Descriptions.Item>
-              <Descriptions.Item label="所在池">
-                <Tag color={getPoolLocation(currentRecord).color}>
-                  {getPoolLocation(currentRecord).label}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="状态">
-                <Tag color={statusMap[currentRecord.status]?.color}>
-                  {statusMap[currentRecord.status]?.label}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="创建时间">{formatBeijingTime(currentRecord.created_at)}</Descriptions.Item>
-              <Descriptions.Item label="更新时间">{formatBeijingTime(currentRecord.updated_at)}</Descriptions.Item>
-            </Descriptions>
-          </div>
-        )}
-      </Modal>
 
       {/* 确认/拒绝弹窗 */}
       <Modal
@@ -1266,6 +1095,8 @@ function DraftPool() {
           </div>
         </div>
       </Modal>
+
+
     </div>
   )
 }

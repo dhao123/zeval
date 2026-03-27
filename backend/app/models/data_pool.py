@@ -52,7 +52,7 @@ class RouteConfig(Base):
 class DownloadLog(Base):
     """Download log for tracking case popularity."""
     
-    __tablename__ = "download_logs"
+    __tablename__ = "pool_download_logs"
     
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     download_type: Mapped[str] = mapped_column(String(32), nullable=False)  # training/evaluation

@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router, security
-from app.auth.middleware import auth_middleware
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.core.database import init_db
@@ -52,9 +51,9 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # SSO Auth middleware (only if SSO is enabled)
-    if settings.sso_enabled:
-        app.middleware("http")(auth_middleware)
+    # Note: SSO Auth is handled per-endpoint via Depends(get_current_user)
+    # We don't use a global auth middleware to avoid performance issues
+    # with external security service calls on every request
     
     # Include API routers
     app.include_router(api_router, prefix="/api")

@@ -22,6 +22,7 @@ import {
   EyeInvisibleOutlined,
   RiseOutlined,
 } from '@ant-design/icons'
+import PoolDownloadModal from '@/components/PoolDownloadModal'
 import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
 import { Line } from '@ant-design/plots'
@@ -100,6 +101,7 @@ function EvaluationPool() {
   
   const [categoryOptions, setCategoryOptions] = useState<{value: string, label: string}[]>([])
   const [timeRange, setTimeRange] = useState(7)
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false)
 
   const fetchCategoryOptions = useCallback(async (keyword?: string) => {
     try {
@@ -362,8 +364,12 @@ function EvaluationPool() {
           </Space>
           
           <Space>
-            <Button type="primary" icon={<DownloadOutlined />}>
-              导出评测集
+            <Button 
+              type="primary" 
+              icon={<DownloadOutlined />}
+              onClick={() => setDownloadModalOpen(true)}
+            >
+              下载评测集
             </Button>
           </Space>
         </div>
@@ -386,6 +392,14 @@ function EvaluationPool() {
           size="small"
         />
       </Card>
+
+      {/* 下载对话框 */}
+      <PoolDownloadModal
+        open={downloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+        poolType="evaluation"
+        defaultCategory={filters.category_l4}
+      />
     </div>
   )
 }

@@ -3,7 +3,7 @@ API v1 routes.
 """
 from fastapi import APIRouter
 
-from app.api.v1 import auth, category, dashboard, data_pools, datasets, draft_pool, evaluation, leaderboard, reports, router, seeds, skills, standards, synthesis, users, security
+from app.api.v1 import auth, category, dashboard, data_pools, datasets, draft_pool, evaluation, leaderboard, reports, router, seeds, skills, standards, synthesis, upload_batches, users, security
 
 api_router = APIRouter(prefix="/v1")
 
@@ -16,7 +16,8 @@ api_router.include_router(skills.router, prefix="/skills", tags=["Skills"])
 api_router.include_router(synthesis.router, prefix="/synthesis", tags=["Synthesis"])
 api_router.include_router(draft_pool.router, prefix="/draft-pool", tags=["Draft Pool"])
 api_router.include_router(router.router, prefix="/router", tags=["Data Router"])
-api_router.include_router(datasets.router, prefix="/datasets", tags=["Datasets"])
+api_router.include_router(datasets.router, tags=["Datasets"])
+api_router.include_router(upload_batches.router, tags=["Upload Batches"])
 api_router.include_router(evaluation.router, prefix="/evaluations", tags=["Evaluations"])
 api_router.include_router(leaderboard.router, prefix="/leaderboard", tags=["Leaderboard"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])

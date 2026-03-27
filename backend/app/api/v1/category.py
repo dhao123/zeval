@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
+from app.api.deps import get_current_user, require_data_engineer
 from app.schemas.category import (
     CategoryCreate,
     CategoryFilter,
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 async def get_l4_category_options(
     keyword: Optional[str] = Query(None, description="搜索关键词"),
     db: AsyncSession = Depends(get_async_session),
+    current_user: dict = Depends(require_data_engineer),
 ) -> ResponseModel[List[dict]]:
     """Get L4 category options for AutoComplete.
     
@@ -58,6 +60,7 @@ async def get_l4_category_options(
 @router.get("/dashboard", response_model=ResponseModel[DashboardStats])
 async def get_dashboard_stats(
     db: AsyncSession = Depends(get_async_session),
+    current_user: dict = Depends(require_data_engineer),
 ) -> ResponseModel[DashboardStats]:
     """Get dashboard statistics with category breakdown."""
     service = CategoryService(db)
@@ -77,6 +80,7 @@ async def list_categories(
     limit: int = Query(100, ge=1, le=1000, description="Limit to N items"),
     include_stats: bool = Query(False, description="Include statistics"),
     db: AsyncSession = Depends(get_async_session),
+    current_user: dict = Depends(require_data_engineer),
 ) -> ResponseModel[CategoryListResponse]:
     """List categories with optional filtering and statistics."""
     service = CategoryService(db)
@@ -110,6 +114,7 @@ async def get_category(
     category_id: str,
     include_stats: bool = Query(False, description="Include statistics"),
     db: AsyncSession = Depends(get_async_session),
+    current_user: dict = Depends(require_data_engineer),
 ) -> ResponseModel[CategoryRead]:
     """Get single category by ID."""
     service = CategoryService(db)

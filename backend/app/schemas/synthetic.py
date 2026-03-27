@@ -115,6 +115,7 @@ class SyntheticUploadResponse(BaseModel):
     duplicated: int = Field(..., description="重复条数")
     failed: int = Field(..., description="失败条数")
     details: List[Dict[str, Any]] = Field(default_factory=list, description="详细结果")
+    batch_id: Optional[str] = Field(default=None, description="上传批次ID")
 
 
 class SyntheticFilter(BaseModel):
@@ -123,6 +124,7 @@ class SyntheticFilter(BaseModel):
     status: Optional[str] = Field(default=None, pattern="^(draft|confirmed|rejected)$", description="状态")
     seed_id: Optional[str] = Field(default=None, description="关联种子ID")
     keyword: Optional[str] = Field(default=None, description="关键词搜索")
+    batch_id: Optional[str] = Field(default=None, description="上传批次ID")
 
 
 # 任务相关

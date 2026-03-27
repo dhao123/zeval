@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     # Local auth (always enabled for fallback)
     local_auth_enabled: bool = True
     
+    # Aliyun OSS Configuration
+    oss_access_key_id: str = ""
+    oss_access_key_secret: str = ""
+    oss_endpoint: str = "oss-cn-hangzhou.aliyuncs.com"
+    oss_bucket_name: str = "zkh-qa"
+    oss_internal_endpoint: Optional[str] = None  # 内网地址（可选）
+    
     @property
     def cors_origin_list(self) -> List[str]:
         """Parse CORS origins string to list."""

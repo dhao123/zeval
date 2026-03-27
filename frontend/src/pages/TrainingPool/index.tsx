@@ -21,6 +21,7 @@ import {
   DatabaseOutlined,
   RiseOutlined,
 } from '@ant-design/icons'
+import PoolDownloadModal from '@/components/PoolDownloadModal'
 import type { ColumnsType } from 'antd/es/table'
 import axios from 'axios'
 import { Line } from '@ant-design/plots'
@@ -99,6 +100,7 @@ function TrainingPool() {
   
   const [categoryOptions, setCategoryOptions] = useState<{value: string, label: string}[]>([])
   const [timeRange, setTimeRange] = useState(7)
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false)
 
   const fetchCategoryOptions = useCallback(async (keyword?: string) => {
     try {
@@ -370,7 +372,11 @@ function TrainingPool() {
           </Space>
           
           <Space>
-            <Button type="primary" icon={<DownloadOutlined />}>
+            <Button 
+              type="primary" 
+              icon={<DownloadOutlined />}
+              onClick={() => setDownloadModalOpen(true)}
+            >
               下载训练集
             </Button>
           </Space>
@@ -394,6 +400,14 @@ function TrainingPool() {
           size="small"
         />
       </Card>
+
+      {/* 下载对话框 */}
+      <PoolDownloadModal
+        open={downloadModalOpen}
+        onClose={() => setDownloadModalOpen(false)}
+        poolType="training"
+        defaultCategory={filters.category_l4}
+      />
     </div>
   )
 }

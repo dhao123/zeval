@@ -32,6 +32,7 @@ async def list_draft_pool(
     status: Optional[str] = Query(None, pattern="^(draft|confirmed|rejected)$", description="按状态筛选"),
     seed_id: Optional[str] = Query(None, description="按种子ID筛选"),
     keyword: Optional[str] = Query(None, description="关键词搜索"),
+    batch_id: Optional[str] = Query(None, description="按上传批次ID筛选"),
     pagination: PaginationParams = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user = Depends(require_data_engineer),
@@ -39,7 +40,7 @@ async def list_draft_pool(
     """
     查询初创池（合成数据）列表。
     
-    支持按类目、状态、难度、种子ID筛选，支持关键词搜索。
+    支持按类目、状态、难度、种子ID、上传批次筛选，支持关键词搜索。
     非管理员只能查看自己创建的数据。
     """
     service = SyntheticService(db)
@@ -48,16 +49,17 @@ async def list_draft_pool(
         status=status,
         seed_id=seed_id,
         keyword=keyword,
+        batch_id=batch_id,
     )
     
-    # 判断是否为管理员
-    is_admin = current_user.role is not None and current_user.role.name == "admin"
+    # 判断是否为管理员（SSO用户dict类型）
+    is_admin = current_user.get("is_admin", False)
     
     result = await service.get_list(
         filter_params=filter_params,
         page=pagination.page,
         size=pagination.size,
-        user_id=current_user.id,
+        user_id=current_user.get("id"),
         is_admin=is_admin,
     )
     
@@ -116,10 +118,25 @@ async def upload_synthetics(
             detail="Only Excel (.xlsx, .xls) or CSV files are supported",
         )
     
+    # 从SSO用户信息中获取用户ID和显示名称
+    # SSO user_info 可能包含的字段: id, username, name, realName, displayName, nickname
+    logger.info(f"Current user info: {current_user}")
+    owner_id = str(current_user.get('id', '')) if current_user.get('id') else None
+    owner_name = (
+        current_user.get('nickname') or
+        current_user.get('name') or 
+        current_user.get('realName') or 
+        current_user.get('displayName') or 
+        current_user.get('username')
+    )
+    logger.info(f"Extracted owner_id: {owner_id}, owner_name: {owner_name}")
+    
     result = await service.upload_from_excel(
         file=file.file,
         filename=file.filename,
-        created_by=current_user.id,
+        created_by=current_user.get('id'),
+        owner_id=owner_id,
+        owner_name=owner_name,
     )
     
     logger.info(f"Synthetic upload: {result.success} created, {result.duplicated} duplicated")

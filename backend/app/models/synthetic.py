@@ -86,6 +86,13 @@ class SyntheticData(Base):
     # 分流追踪 (确认后填写)
     route_batch_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, comment="分流批次ID")
     
+    # 上传批次追踪
+    upload_batch_id: Mapped[Optional[str]] = mapped_column(
+        String(64), 
+        index=True, 
+        comment="上传批次ID（关联upload_batches）"
+    )
+    
     # Relationships
     seed: Mapped[Optional["Seed"]] = relationship("Seed", back_populates="synthetics")
     standard: Mapped[Optional["Standard"]] = relationship("Standard", back_populates="synthetics")

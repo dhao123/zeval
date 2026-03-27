@@ -25,6 +25,9 @@ from app.schemas.synthetic import (
 )
 from app.services.base import BaseService
 from app.services.category_service import CategoryService
+from app.services.upload_batch_service import UploadBatchService
+from app.services.oss_service import get_oss_service
+from app.core.config import settings
 
 
 class SyntheticService(BaseService[SyntheticData]):
@@ -340,6 +343,9 @@ class SyntheticService(BaseService[SyntheticData]):
                 )
             )
         
+        if filter_params.batch_id:
+            query = query.where(SyntheticData.upload_batch_id == filter_params.batch_id)
+        
         # Count total
         count_query = select(func.count()).select_from(query.subquery())
         total_result = await self.db.execute(count_query)
@@ -444,6 +450,46 @@ class SyntheticService(BaseService[SyntheticData]):
         
         return await super().create(**synthetic_data)
     
+    async def create_with_batch(
+        self,
+        data: SyntheticCreate,
+        created_by: Optional[int] = None,
+        upload_batch_id: Optional[str] = None,
+    ) -> SyntheticData:
+        """Create a new synthetic data with upload batch ID."""
+        # Compute hash
+        hash_value = self.compute_hash(data.input, data.gt)
+        
+        # Check for duplicate
+        existing = await self.get_by_hash(hash_value)
+        if existing:
+            raise ValueError(f"Duplicate synthetic data detected: {existing.synthetic_id}")
+        
+        synthetic_data = {
+            "synthetic_id": data.synthetic_id or self.generate_synthetic_id(),
+            "input": data.input,
+            "gt": data.gt,
+            "category_l1": data.category_l1,
+            "category_l2": data.category_l2,
+            "category_l3": data.category_l3,
+            "category_l4": data.category_l4,
+            "category_path": data.category_path,
+            "status": "draft",
+            "hash": hash_value,
+            "version": "1.0",
+            "seed_id": data.seed_id,
+            "standard_id": data.standard_id,
+            "skill_id": data.skill_id,
+            "difficulty": data.difficulty,
+            "synthesis_params": data.synthesis_params,
+            "ai_check_result": data.ai_check_result,
+            "ai_check_passed": data.ai_check_passed,
+            "created_by": created_by,
+            "upload_batch_id": upload_batch_id,
+        }
+        
+        return await super().create(**synthetic_data)
+    
     async def update(
         self,
         synthetic_id: str,
@@ -478,6 +524,8 @@ class SyntheticService(BaseService[SyntheticData]):
         file: BytesIO,
         filename: str,
         created_by: int,
+        owner_id: Optional[str] = None,
+        owner_name: Optional[str] = None,
     ) -> SyntheticUploadResponse:
         """
         Upload synthetic data from Excel/CSV file with smart column detection.
@@ -486,9 +534,57 @@ class SyntheticService(BaseService[SyntheticData]):
         1. 标准格式: input, gt(JSON), category_l4, category_path, difficulty
         2. 简写格式: 第一列=input, 其余列合并为gt, 自动推断category
         3. 混合格式: 包含input列和部分gt列
+        
+        同时创建上传批次记录并上传文件到OSS。
         """
-        # Read file
+        from app.models.upload_batch import UploadBatch
+        from app.core.logging import get_logger
+        logger = get_logger(__name__)
+        
+        # 创建上传批次记录
+        batch_service = UploadBatchService(self.db)
+        batch = await batch_service.create_batch(
+            file_name=filename,
+            file_url="",  # 临时占位，后面更新
+            object_key="",  # 临时占位，后面更新
+            file_size=0,  # 临时占位，后面更新
+            owner_id=owner_id,
+            owner_name=owner_name,
+        )
+        
+        # 上传文件到OSS
+        file_url = ""
+        object_key = ""
         try:
+            file.seek(0, 2)  # 移动到文件末尾
+            file_size = file.tell()
+            file.seek(0)  # 回到开头
+            
+            oss_service = get_oss_service()
+            if oss_service.is_configured():
+                object_key = f"uploads/{batch.batch_id}/{filename}"
+                file_url = await oss_service.upload_file_object(file, object_key)
+            else:
+                # OSS未配置，使用本地存储路径
+                logger.warning("OSS not configured, using local path")
+                object_key = f"uploads/{batch.batch_id}/{filename}"
+                file_url = f"/local/{object_key}"
+            
+            # 更新批次信息
+            batch.file_url = file_url
+            batch.object_key = object_key
+            batch.file_size = file_size
+            await self.db.commit()
+            
+        except Exception as e:
+            logger.error(f"Failed to upload file to OSS: {e}")
+            # 标记批次失败
+            await batch_service.fail_batch(batch.batch_id, f"文件上传失败: {str(e)}")
+            raise ValueError(f"文件上传失败: {str(e)}")
+        
+        # Read file content for processing
+        try:
+            file.seek(0)
             if filename.endswith(".csv"):
                 df = pd.read_csv(file)
             elif filename.endswith(".xlsx"):
@@ -504,6 +600,7 @@ class SyntheticService(BaseService[SyntheticData]):
                 else:
                     df = pd.read_csv(file)
         except Exception as e:
+            await batch_service.fail_batch(batch.batch_id, f"无法读取文件: {str(e)}")
             raise ValueError(f"Cannot read file: {str(e)}. Please ensure the file is a valid Excel (.xlsx, .xls) or CSV file.")
         
         # 使用智能解析
@@ -547,7 +644,7 @@ class SyntheticService(BaseService[SyntheticData]):
                         source="upload",
                     )
                 
-                # Create synthetic data with full category hierarchy
+                # Create synthetic data with upload_batch_id
                 synthetic_data = SyntheticCreate(
                     input=data["input"],
                     gt=data["gt"],
@@ -559,7 +656,8 @@ class SyntheticService(BaseService[SyntheticData]):
                     difficulty=data["difficulty"],
                 )
                 
-                await self.create(synthetic_data, created_by=created_by)
+                # Create with batch_id
+                await self.create_with_batch(synthetic_data, created_by=created_by, upload_batch_id=batch.batch_id)
                 success += 1
                 details.append({"row": row_num, "status": "success"})
                 
@@ -586,12 +684,21 @@ class SyntheticService(BaseService[SyntheticData]):
                     "reason": str(e),
                 })
         
+        # 完成批次处理
+        await batch_service.complete_batch(
+            batch_id=batch.batch_id,
+            record_count=success + duplicated + failed,
+            success_count=success,
+            fail_count=failed + duplicated,
+        )
+        
         return SyntheticUploadResponse(
             total=total,
             success=success,
             duplicated=duplicated,
             failed=failed,
             details=details,
+            batch_id=batch.batch_id,
         )
     
     async def export_to_excel(
