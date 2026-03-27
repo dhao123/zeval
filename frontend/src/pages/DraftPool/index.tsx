@@ -836,6 +836,8 @@ function DraftPool() {
       params.append('page', String(page))
       params.append('size', String(pageSize))
       params.append('upload_batch_id', batchId)
+      if (filters.status) params.append('status', filters.status)
+      if (filters.keyword) params.append('keyword', filters.keyword)
       
       const response = await axios.get<ApiResponse<SyntheticData[]>>(
         `${API_BASE_URL}${getApiPath('/draft-pool')}?${params.toString()}`
@@ -855,7 +857,7 @@ function DraftPool() {
     } finally {
       setBatchCasesLoading(false)
     }
-  }, [])
+  }, [filters.status, filters.keyword])
 
   // 处理查看批次详情
   const handleViewBatchDetail = (batch: any) => {
@@ -981,13 +983,20 @@ function DraftPool() {
                 value={filters.keyword}
                 onChange={(e) => setFilters(prev => ({ ...prev, keyword: e.target.value }))}
                 onSearch={() => fetchBatchCases(selectedBatch.batch_id, 1, batchCasesPagination.pageSize)}
+                onPressEnter={() => fetchBatchCases(selectedBatch.batch_id, 1, batchCasesPagination.pageSize)}
                 allowClear
               />
               <Select
                 placeholder="状态"
                 style={{ width: 120 }}
                 value={filters.status}
-                onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+                onChange={(value) => {
+                  setFilters(prev => ({ ...prev, status: value }))
+                  // 自动刷新数据
+                  if (selectedBatch) {
+                    fetchBatchCases(selectedBatch.batch_id, 1, batchCasesPagination.pageSize)
+                  }
+                }}
                 allowClear
                 options={[
                   { label: '草稿', value: 'draft' },
