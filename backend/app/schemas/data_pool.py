@@ -21,6 +21,11 @@ class DataPoolRead(DataPoolBase):
     source_id: str = Field(..., description="来源数据ID")
     pool_type: str = Field(..., description="池子类型：training/evaluation")
     
+    # Category info (from synthetic_data)
+    category_l1: Optional[str] = Field(default=None, description="一级类目")
+    category_l2: Optional[str] = Field(default=None, description="二级类目")
+    category_l3: Optional[str] = Field(default=None, description="三级类目")
+    
     # GT handling:
     # - Training pool: GT is visible
     # - Evaluation pool: GT is hidden (for scoring only)
@@ -33,6 +38,9 @@ class DataPoolRead(DataPoolBase):
     # Status
     is_frozen: bool = Field(default=False, description="是否冻结")
     download_count: int = Field(default=0, description="下载次数")
+    
+    # User info (from upload_batches via synthetic_data)
+    owner_name: Optional[str] = Field(default=None, description="数据Owner名称")
     
     # Timestamps
     created_at: datetime = Field(..., description="创建时间")

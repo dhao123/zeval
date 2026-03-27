@@ -17,6 +17,8 @@ from app.core.config import settings
 from app.models.data_pool import DataPool
 from app.models.synthetic import SyntheticData
 from app.models.dataset_export import DatasetVersion, ExportTask, DownloadLog
+from app.models.upload_batch import UploadBatch
+from app.models.user import User
 from app.schemas.dataset import DatasetInfoResponse, DatasetPoolInfo
 
 logger = get_logger(__name__)
@@ -115,6 +117,16 @@ class DatasetService:
         
         return list(versions)
     
+    async def _get_owner_name(self, source_id: str) -> Optional[str]:
+        """Get owner_name from upload_batches via synthetic_data."""
+        result = await self.db.execute(
+            select(UploadBatch.owner_name)
+            .join(SyntheticData, SyntheticData.upload_batch_id == UploadBatch.batch_id, isouter=True)
+            .where(SyntheticData.synthetic_id == source_id)
+        )
+        row = result.first()
+        return row[0] if row else None
+    
     async def stream_dataset(
         self,
         category_l4: Optional[str],
@@ -135,6 +147,7 @@ class DatasetService:
             random: 是否随机抽取
         """
         from sqlalchemy import func
+        from sqlalchemy.orm import selectinload
         
         # Build query
         conditions = [DataPool.pool_type == pool_type]
@@ -185,7 +198,7 @@ class DatasetService:
                 "pool_type": pool_type,
                 "version": "v1.0.0",
                 "record_count": len(records),
-                "fields": ["id", "input", "gt"] if pool_type == "training" else ["id", "input"],
+                "fields": ["id", "input", "gt", "category_l4", "owner_name"] if pool_type == "training" else ["id", "input", "category_l4", "owner_name"],
                 "generated_at": datetime.now(timezone.utc).isoformat()
             },
             "data": []
@@ -199,13 +212,14 @@ class DatasetService:
         
         # Yield records
         for i, record in enumerate(records):
+            # Get owner_name from upload_batches
+            owner_name = await self._get_owner_name(record.source_id)
+            
             item = {
                 "id": record.pool_id,
                 "input": record.input,
-                "category_l1": "",  # TODO: Join with category table
-                "category_l2": "",
-                "category_l3": "",
-                "category_l4": record.category_l4
+                "category_l4": record.category_l4,
+                "owner_name": owner_name
             }
             
             if pool_type == "training" and record.gt:
@@ -237,11 +251,11 @@ class DatasetService:
         # Create CSV writer
         output = io.StringIO()
         
-        # Determine fields
+        # Determine fields (including owner_name)
         if pool_type == "training":
-            fieldnames = ["id", "input", "gt", "category_l4"]
+            fieldnames = ["id", "input", "gt", "category_l4", "owner_name"]
         else:
-            fieldnames = ["id", "input", "category_l4"]
+            fieldnames = ["id", "input", "category_l4", "owner_name"]
         
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
@@ -251,10 +265,14 @@ class DatasetService:
         
         # Write records
         for record in records:
+            # Get owner_name from upload_batches
+            owner_name = await self._get_owner_name(record.source_id)
+            
             row = {
                 "id": record.pool_id,
                 "input": record.input,
-                "category_l4": record.category_l4
+                "category_l4": record.category_l4,
+                "owner_name": owner_name or ""
             }
             
             if pool_type == "training":

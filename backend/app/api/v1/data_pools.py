@@ -14,12 +14,53 @@ from app.api.deps import get_current_active_user, require_data_engineer, get_cur
 from app.core.database import get_async_session
 from app.core.logging import get_logger
 from app.models.data_pool import DataPool
-from app.models.user import User
+from app.models.synthetic import SyntheticData
+from app.models.upload_batch import UploadBatch
 from app.schemas.common import PaginatedResponse, PaginationParams, ResponseModel
 from app.schemas.data_pool import DataPoolRead, DataPoolFilter
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+def _build_data_pool_response(item: DataPool, synthetic: SyntheticData = None, owner_name: str = None) -> dict:
+    """Build data pool response with category info and owner_name from synthetic_data."""
+    return {
+        "id": item.id,
+        "pool_id": item.pool_id,
+        "data_type": item.data_type,
+        "source_id": item.source_id,
+        "pool_type": item.pool_type,
+        "input": item.input,
+        "category_l4": item.category_l4,
+        # Category info from synthetic_data
+        "category_l1": synthetic.category_l1 if synthetic else None,
+        "category_l2": synthetic.category_l2 if synthetic else None,
+        "category_l3": synthetic.category_l3 if synthetic else None,
+        "gt": item.gt,
+        "route_batch_id": item.route_batch_id,
+        "route_ratio": float(item.route_ratio) if item.route_ratio else None,
+        "is_frozen": item.is_frozen,
+        "download_count": item.download_count,
+        # Owner name from upload_batches
+        "owner_name": owner_name,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+async def _get_synthetic_info(db: AsyncSession, source_id: str) -> tuple:
+    """Get synthetic_data and owner_name by source_id."""
+    # Query synthetic_data with upload_batch to get owner_name
+    result = await db.execute(
+        select(SyntheticData, UploadBatch.owner_name)
+        .join(UploadBatch, SyntheticData.upload_batch_id == UploadBatch.batch_id, isouter=True)
+        .where(SyntheticData.synthetic_id == source_id)
+    )
+    row = result.first()
+    if row:
+        return row[0], row[1]
+    return None, None
 
 
 @router.get("/training", response_model=PaginatedResponse[List[DataPoolRead]])
@@ -37,11 +78,6 @@ async def list_training_pool(
     支持按类目、关键词筛选。
     """
     query = select(DataPool).where(DataPool.pool_type == "training")
-    
-    # 用户数据隔离（简化版，SSO用户暂时不过滤）
-    # is_admin = current_user.get("is_admin", False)
-    # if not is_admin:
-    #     query = query.where(DataPool.created_by == current_user.get("id"))
     
     # Apply filters
     if category_l4:
@@ -63,12 +99,18 @@ async def list_training_pool(
     result = await db.execute(query)
     items = result.scalars().all()
     
+    # Enrich data with synthetic info
+    enriched_items = []
+    for item in items:
+        synthetic, owner_name = await _get_synthetic_info(db, item.source_id)
+        enriched_items.append(_build_data_pool_response(item, synthetic, owner_name))
+    
     pages = (total + pagination.size - 1) // pagination.size
     
     return PaginatedResponse(
         code=0,
         message="success",
-        data=list(items),
+        data=enriched_items,
         pagination={
             "page": pagination.page,
             "size": pagination.size,
@@ -94,11 +136,6 @@ async def list_evaluation_pool(
     """
     query = select(DataPool).where(DataPool.pool_type == "evaluation")
     
-    # 用户数据隔离（简化版，SSO用户暂时不过滤）
-    # is_admin = current_user.get("is_admin", False)
-    # if not is_admin:
-    #     query = query.where(DataPool.created_by == current_user.get("id"))
-    
     # Apply filters
     if category_l4:
         query = query.where(DataPool.category_l4 == category_l4)
@@ -119,12 +156,20 @@ async def list_evaluation_pool(
     result = await db.execute(query)
     items = result.scalars().all()
     
+    # Enrich data with synthetic info (hide gt for evaluation pool in response)
+    enriched_items = []
+    for item in items:
+        synthetic, owner_name = await _get_synthetic_info(db, item.source_id)
+        # For evaluation pool, we still return gt in API (frontend will hide it)
+        # but owner_name should be visible
+        enriched_items.append(_build_data_pool_response(item, synthetic, owner_name))
+    
     pages = (total + pagination.size - 1) // pagination.size
     
     return PaginatedResponse(
         code=0,
         message="success",
-        data=list(items),
+        data=enriched_items,
         pagination={
             "page": pagination.page,
             "size": pagination.size,
@@ -206,12 +251,18 @@ async def test_list_training_pool(
     result = await db.execute(query)
     items = result.scalars().all()
     
+    # Enrich data with synthetic info
+    enriched_items = []
+    for item in items:
+        synthetic, owner_name = await _get_synthetic_info(db, item.source_id)
+        enriched_items.append(_build_data_pool_response(item, synthetic, owner_name))
+    
     pages = (total + size - 1) // size
     
     return PaginatedResponse(
         code=0,
         message="success",
-        data=list(items),
+        data=enriched_items,
         pagination={"page": page, "size": size, "total": total, "pages": pages},
     )
 
@@ -243,11 +294,17 @@ async def test_list_evaluation_pool(
     result = await db.execute(query)
     items = result.scalars().all()
     
+    # Enrich data with synthetic info
+    enriched_items = []
+    for item in items:
+        synthetic, owner_name = await _get_synthetic_info(db, item.source_id)
+        enriched_items.append(_build_data_pool_response(item, synthetic, owner_name))
+    
     pages = (total + size - 1) // size
     
     return PaginatedResponse(
         code=0,
         message="success",
-        data=list(items),
+        data=enriched_items,
         pagination={"page": page, "size": size, "total": total, "pages": pages},
     )

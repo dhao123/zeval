@@ -711,7 +711,12 @@ class SyntheticService(BaseService[SyntheticData]):
         """Confirm or reject synthetic data."""
         from datetime import datetime, timezone
         
-        synthetic = await self.get_by_synthetic_id(synthetic_id)
+        # 直接查询模型对象（不是dict），因为需要修改和保存
+        result = await self.db.execute(
+            select(SyntheticData).where(SyntheticData.synthetic_id == synthetic_id)
+        )
+        synthetic = result.scalar_one_or_none()
+        
         if not synthetic:
             return SyntheticConfirmResponse(
                 success=False,
